@@ -2252,7 +2252,7 @@ git commit -m "feat: WASM argon2id (pinned params) + bootstrap/recovery scripts;
 - Create: `src/lib/auth/totp.ts`, `src/lib/auth/totp.test.ts`
 - Create: `src/lib/db/totpStore.ts`, `src/lib/db/totpStore.test.ts`
 
-- [ ] **Step 1: Failing tests** `src/lib/auth/totp.test.ts` (explicit timestamps; injected fake store):
+- [x] **Step 1: Failing tests** `src/lib/auth/totp.test.ts` (explicit timestamps; injected fake store):
 
 ```ts
 import { expect, test, vi } from "vitest";
@@ -2297,9 +2297,9 @@ test("rejects a code two steps away (outside ±1)", async () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- totp` → FAIL.
+- [x] **Step 2: Run to verify fail** — `npm test -- totp` → FAIL.
 
-- [ ] **Step 3: Implement** `src/lib/auth/totp.ts`:
+- [x] **Step 3: Implement** `src/lib/auth/totp.ts`:
 
 ```ts
 import * as OTPAuth from "otpauth";
@@ -2325,9 +2325,9 @@ export async function verifyTotp(
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- totp` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- totp` → PASS.
 
-- [ ] **Step 5: D1 step store + tests.**
+- [x] **Step 5: D1 step store + tests.**
 
 `src/lib/db/totpStore.ts`:
 
@@ -2386,9 +2386,9 @@ test("fails closed when the DB throws", async () => {
 });
 ```
 
-- [ ] **Step 6: Run** — `npm test -- totp` → PASS (all).
+- [x] **Step 6: Run** — `npm test -- totp` → PASS (all).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/auth/totp.ts src/lib/auth/totp.test.ts src/lib/db/totpStore.ts src/lib/db/totpStore.test.ts
