@@ -61,11 +61,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** In progress — subagent-driven execution started 2026-07-02 on branch `dev`.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Foundation & pitfalls docs | ⬜ Not started | — | — |
+| 0 — Foundation & pitfalls docs | 🚧 In progress | — | claimed 2026-07-02T09:27:26Z, branch `dev` |
 | 1 — D1 dialect spike (risk-first) | ⬜ Not started | — | validates the atomic-redeem SQL + expression DEFAULT on real D1 |
 | 2 — Schema, codes & signed tokens | ⬜ Not started | — | — |
 | 3 — Gate route, cookie, headers, limiter | ⬜ Not started | — | — |
@@ -162,7 +162,7 @@ phases (2–6 run entirely against local D1).
 
 ## Phase 0 — Foundation & pitfalls docs
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T09:27:26Z, branch `dev`
 
 > Why this phase first: establishes the toolchain, the workerd test harness every later task depends
 > on, and the project-specific pitfalls docs the TDD blocks reference. Pitfalls are seeded from the
