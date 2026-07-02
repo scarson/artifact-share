@@ -38,10 +38,11 @@ export default defineConfig(async () => {
             SESSION_SECRET: "k1:test-session-secret-do-not-use-in-prod-0000000000",
             ASSET_COOKIE_SECRET: "k1:test-asset-secret-do-not-use-in-prod-00000000000",
             ADMIN_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
-            // Placeholder until Task 4.1 Step 6 replaces it with a REAL hash-wasm argon2id hash of
-            // the literal test password "test-password". Login-flow tests verify against this value;
-            // do not ship the placeholder — see docs/pitfalls/testing-pitfalls.md.
-            ADMIN_PASSWORD_HASH: "PLACEHOLDER-REPLACED-IN-TASK-4.1"
+            // REAL argon2id PHC hash (Task 4.1 Step 6) of the literal test password "test-password",
+            // generated via `node scripts/hash-password.mjs test-password` (@noble/hashes argon2id,
+            // pinned params m=19456,t=2,p=1). Login-flow tests verify against this value — see
+            // docs/pitfalls/testing-pitfalls.md.
+            ADMIN_PASSWORD_HASH: "$argon2id$v=19$m=19456,t=2,p=1$TMPKUmUqqMH1LgIT0xGKrw$Q6OBbtpZyIuY3mM6TIlKaf3Hr8P1wpf5NLD6xgz98IE"
           }
         }
       })

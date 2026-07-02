@@ -72,10 +72,14 @@ the registry, not the shape regex, is the D2 backstop. The external-origin scan 
 lint; CSP is the containment boundary (§9).
 
 ## Bootstrap hash must be byte-compatible with the runtime verifier (spec §8)
-`scripts/hash-password.mjs` (Node) and the Worker verifier BOTH use `hash-wasm` argon2id with the
-same pinned params; the PHC-encoded string embeds params+salt so verify reads them back. Never
-substitute a different argon2 library on one side only, or the admin's correct password is
-rejected with no obvious cause. `@node-rs/argon2` does NOT run on Workers (native addon).
+`scripts/hash-password.mjs` (Node) and the Worker verifier BOTH use `@noble/hashes` argon2id
+(pure JS) with the same pinned params (m=19456,t=2,p=1,dkLen=32,version=0x13) and standard PHC
+encoding, so the printed hash verifies in-Worker byte-for-byte; the PHC-encoded string embeds
+params+salt so verify reads them back. Never substitute a different argon2 implementation or
+params on one side only, or the admin's correct password is rejected with no obvious cause.
+`@node-rs/argon2` does NOT run on Workers (native addon). `hash-wasm` also does NOT run on
+Workers: it compiles its WASM at runtime via `WebAssembly.compile(bytes)`, which workerd forbids
+("Wasm code generation disallowed by embedder") — it cannot be the Worker-side verifier.
 
 ## TOTP: consume the step only AFTER the password verifies (spec §5, §8)
 `verifyTotp` marks the matched step used — call it ONLY after the password check passes, else a

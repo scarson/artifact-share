@@ -2153,7 +2153,7 @@ git commit -m "feat: bucketed+global atomic rate limiting (fails open), valid-co
 - Create: `scripts/hash-password.mjs`, `scripts/totp-setup.mjs`
 - Modify: `vitest.config.ts` (replace the ADMIN_PASSWORD_HASH placeholder with a real test hash)
 
-- [ ] **Step 1: Failing test** `src/lib/auth/password.test.ts`:
+- [x] **Step 1: Failing test** `src/lib/auth/password.test.ts`:
 
 ```ts
 import { expect, test } from "vitest";
@@ -2174,9 +2174,9 @@ test("rejects a malformed or fast-hash value without throwing", async () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- password` → FAIL.
+- [x] **Step 2: Run to verify fail** — `npm test -- password` → FAIL.
 
-- [ ] **Step 3: Implement** `src/lib/auth/password.ts`:
+- [x] **Step 3: Implement** `src/lib/auth/password.ts`:
 
 ```ts
 import { argon2id, argon2Verify } from "hash-wasm";
@@ -2201,9 +2201,9 @@ export async function verifyPassword(password: string, stored: string): Promise<
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- password` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- password` → PASS.
 
-- [ ] **Step 5: Bootstrap + recovery scripts** (Node-side; SAME library ⇒ byte-compatible — see pitfalls):
+- [x] **Step 5: Bootstrap + recovery scripts** (Node-side; SAME library ⇒ byte-compatible — see pitfalls):
 
 `scripts/hash-password.mjs`:
 
@@ -2234,12 +2234,12 @@ console.log("\nScan this otpauth URI (recovery = re-run this script, re-put, re-
 console.log(totp.toString());
 ```
 
-- [ ] **Step 6: Fulfill the test-hash placeholder** (login-flow tests in Task 4.3 need a REAL hash):
+- [x] **Step 6: Fulfill the test-hash placeholder** (login-flow tests in Task 4.3 need a REAL hash):
 
 Run: `node scripts/hash-password.mjs test-password`
 Replace `"ADMIN_PASSWORD_HASH": "PLACEHOLDER-REPLACED-IN-TASK-4.1"` in `vitest.config.ts` with the printed `$argon2id$…` string. (The test password is literally `test-password`.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/auth scripts/hash-password.mjs scripts/totp-setup.mjs vitest.config.ts
