@@ -67,8 +67,8 @@ notes and commit messages.
 |---|---|---|---|
 | 0 — Foundation & pitfalls docs | ✅ Shipped 2026-07-02 | 0ec129d, 279f6b5, fee8995, f5c1aa0, 7484368 | gate review: 3/3 rounds clean; Task 0.3 deviation recorded |
 | 1 — D1 dialect spike (risk-first) | ✅ Shipped 2026-07-02 | 385e0e1 | both remote proofs ✓ (expression DEFAULT; atomic UPDATE…RETURNING) — Phase 3 unblocked |
-| 2 — Schema, codes & signed tokens | 🚧 In progress | — | claimed 2026-07-02T10:29:44Z, branch `dev` |
-| 3 — Gate route, cookie, headers, limiter | ⬜ Not started | — | — |
+| 2 — Schema, codes & signed tokens | ✅ Shipped 2026-07-02 | 83ecbbf, 1bd08ae, 009c435, 608d5ca | gate review: 3/3 rounds clean (incl. 30-probe adversarial token review) |
+| 3 — Gate route, cookie, headers, limiter | 🚧 In progress | — | claimed 2026-07-02T18:27:42Z, branch `dev` |
 | 4 — Admin auth (WASM argon2id + TOTP) | ⬜ Not started | — | — |
 | 5 — Admin panel UI | ⬜ Not started | — | — |
 | 6 — Asset pipeline (generator + module map) | ⬜ Not started | — | — |
@@ -82,6 +82,7 @@ notes and commit messages.
 - **2026-07-02 — Phase 6 anticipation (from the Phase 0 gate review):** Task 6.2's prescribed `src/lib/build/manifest-lib.test.ts` imports `../../../scripts/manifest-lib.mjs`; with the current tsconfig (`include: ["src", ".generated"]`, no `allowJs`) this passes `npm test` but fails `npx tsc --noEmit` with TS7016 (no declaration file). No script currently runs tsc, so nothing breaks as written — but Task 6.2's executor should consciously either add `"allowJs": true` or accept the editor-only gap. Decide then; recorded here so it's anticipated, not discovered.
 - **2026-07-02 — `.nvmrc` is 26.3.0** (plan Task 0.2 Step 2 records the local `node -v` by design) while Conventions/CI say Node 24. All installed deps' `engines` accept both. Align or document the split when Task 7.2 authors the CI workflow.
 - **2026-07-02 — remote D1 dialect spike (Task 1.1) verified:** expression DEFAULT ✓ (delta=7776000 exactly at insert), UPDATE…RETURNING with min()/unixepoch() ✓ (cookie_exp = iat+86400 exactly; zero rows + use_count unchanged on wrong slug). Spike DB artifact-share-spike created and deleted the same session.
+- **2026-07-02 — key-ring operational footguns (Phase 2 gate, adversarial round; non-exploitable, no code change):** `parseKeyRing` accepts arbitrarily short secrets (jose imposes no HMAC key-length floor) and a comma INSIDE a secret silently splits the ring into bogus entries. Both are operator-side hazards only — the prescribed `openssl rand -base64 32` emits no commas and is long. Task 7.3's runbook MUST state: secrets are generated with `openssl rand -base64 32`, must never contain commas, and never hand-typed short strings. (The spec §6 duplicate-JSON-key MUST is consciously not met by the jose implementation — already covered by the Task 2.4 documented deviation; verified non-exploitable: single parser, HMAC over exact bytes.)
 
 ---
 
@@ -795,7 +796,7 @@ git commit -m "feat: D1 schema migration 0001 (codes/totp_used_steps/rate_limits
 
 ## Phase 2 — Schema properties, codes & signed tokens
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T10:29:44Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits 83ecbbf (2.1), 1bd08ae (2.2), 009c435 (2.3), 608d5ca (2.4). Gate review 3 rounds clean: adversarial security (30 empirical probes, no exploitable findings), spec conformance (all gate items mapped to named tests), cross-task consistency (Phase 3–5 interfaces dry-compiled against shipped exports).
 
 > Read `docs/pitfalls/testing-pitfalls.md` → "Prove the SQL-level invariants against real D1",
 > "Control time". The migration exists (Phase 1); this phase pins its security properties with tests
@@ -806,7 +807,7 @@ git commit -m "feat: D1 schema migration 0001 (codes/totp_used_steps/rate_limits
 **Files:**
 - Create: `src/lib/db/schema.test.ts`
 
-- [ ] **Step 1: Write the tests** `src/lib/db/schema.test.ts` (they run against the real local D1 with 0001 applied):
+- [x] **Step 1: Write the tests** `src/lib/db/schema.test.ts` (they run against the real local D1 with 0001 applied):
 
 ```ts
 import { env } from "cloudflare:test";
@@ -843,9 +844,9 @@ test("id is minted DB-side as 32-hex (spec §5)", async () => {
 });
 ```
 
-- [ ] **Step 2: Run** — `npm test -- schema` → PASS (migrations applied by the setup file).
+- [x] **Step 2: Run** — `npm test -- schema` → PASS (migrations applied by the setup file).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/db/schema.test.ts
@@ -857,7 +858,7 @@ git commit -m "test: pin schema security properties (no plaintext code, DB-side 
 **Files:**
 - Create: `src/lib/codes.ts`, `src/lib/codes.test.ts`
 
-- [ ] **Step 1: Write the failing test** `src/lib/codes.test.ts`:
+- [x] **Step 1: Write the failing test** `src/lib/codes.test.ts`:
 
 ```ts
 import { expect, test } from "vitest";
@@ -884,9 +885,9 @@ test("hashCode is deterministic 64-hex SHA-256 and differs per code", async () =
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- codes` → FAIL (module not found).
+- [x] **Step 2: Run to verify fail** — `npm test -- codes` → FAIL (module not found).
 
-- [ ] **Step 3: Implement** `src/lib/codes.ts` (WebCrypto — no `node:crypto` on Workers):
+- [x] **Step 3: Implement** `src/lib/codes.ts` (WebCrypto — no `node:crypto` on Workers):
 
 ```ts
 function toBase64Url(bytes: Uint8Array): string {
@@ -912,9 +913,9 @@ export async function hashCode(code: string): Promise<string> {
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- codes` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- codes` → PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/codes.ts src/lib/codes.test.ts
@@ -931,7 +932,7 @@ git commit -m "feat: 128-bit CSPRNG code/slug generation + async SHA-256 hashing
 **Files:**
 - Modify: `src/lib/codes.ts`, `src/lib/codes.test.ts`
 
-- [ ] **Step 1: Add failing tests** to `src/lib/codes.test.ts`:
+- [x] **Step 1: Add failing tests** to `src/lib/codes.test.ts`:
 
 ```ts
 import { codeStatus, type CodeRow } from "./codes";
@@ -953,9 +954,9 @@ test("codeStatus is 'revoked' regardless of expiry", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- codes` → FAIL (`codeStatus` not defined).
+- [x] **Step 2: Run to verify fail** — `npm test -- codes` → FAIL (`codeStatus` not defined).
 
-- [ ] **Step 3: Implement** — append to `src/lib/codes.ts`:
+- [x] **Step 3: Implement** — append to `src/lib/codes.ts`:
 
 ```ts
 /** Row shape of the `codes` table as D1 returns it (snake_case, INTEGER epoch seconds).
@@ -984,9 +985,9 @@ export function codeStatus(
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- codes` → PASS (all).
+- [x] **Step 4: Run to verify pass** — `npm test -- codes` → PASS (all).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/codes.ts src/lib/codes.test.ts
@@ -1017,7 +1018,7 @@ git commit -m "feat: CodeRow type (code_hash, no plaintext) + display-status hel
 **Files:**
 - Create: `src/lib/crypto/tokens.ts`, `src/lib/crypto/tokens.test.ts`
 
-- [ ] **Step 1: Write failing tests** `src/lib/crypto/tokens.test.ts`:
+- [x] **Step 1: Write failing tests** `src/lib/crypto/tokens.test.ts`:
 
 ```ts
 import { decodeJwt } from "jose";
@@ -1100,9 +1101,9 @@ test("session round-trips and rejects a foreign ring", async () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- tokens` → FAIL (module not found).
+- [x] **Step 2: Run to verify fail** — `npm test -- tokens` → FAIL (module not found).
 
-- [ ] **Step 3: Implement** `src/lib/crypto/tokens.ts`:
+- [x] **Step 3: Implement** `src/lib/crypto/tokens.ts`:
 
 ```ts
 import { SignJWT, jwtVerify, decodeProtectedHeader } from "jose";
@@ -1197,9 +1198,9 @@ export async function verifySession(token: string, ring: KeyRing): Promise<boole
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- tokens` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- tokens` → PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/crypto
@@ -1212,7 +1213,7 @@ git commit -m "feat: versioned key-ring asset+session tokens (v/kid, HS256-pinne
 
 ## Phase 3 — Gate route, cookie, headers, limiter
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T18:27:42Z, branch `dev`
 
 > Depends on Phase 1 (✅ dialect spike) and Phase 2 (tokens, codes). Read
 > `docs/pitfalls/implementation-pitfalls.md` → "Fail closed", "The access code is the entire secret",
