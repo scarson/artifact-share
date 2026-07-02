@@ -19,6 +19,39 @@
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "secrets": {
+    "required": ["ADMIN_PASSWORD_HASH", "ADMIN_TOTP_SECRET", "SESSION_SECRET", "ASSET_COOKIE_SECRET"]
+  },
+  "env": {
+    "preview": {
+      "name": "artifact-share-preview",
+      // Preview is reachable ONLY at its workers.dev hostname, which Task 7.3 puts behind
+      // Cloudflare Access. The app-level ENVIRONMENT gate keeps /a/* and /admin inert regardless.
+      "workers_dev": true,
+      "vars": { "ENVIRONMENT": "preview", "PUBLIC_ORIGIN": "https://artifact-share-preview.samuel-carson.workers.dev" },
+      "d1_databases": [{
+        "binding": "DB", "database_name": "artifact-share-preview",
+        "database_id": "<PREVIEW_DB_ID>", "migrations_dir": "migrations"
+      }]
+    },
+    "production": {
+      // Deploys to the EXISTING production Worker (custom domain share.scarson.io already bound).
+      "name": "artifact-share",
+      "workers_dev": false,
+      // NOTE (owner-visible, spec §10): this deliberately DISABLES the currently-enabled
+      // *-artifact-share.samuel-carson.workers.dev version-preview URLs on the production Worker.
+      // Version previews of production run with PRODUCTION bindings (prod D1 + ENVIRONMENT=
+      // production) — a live, non-custom-domain door into confidential content. Previews belong to
+      // the separate artifact-share-preview Worker (empty DB, Access-gated) instead.
+      "preview_urls": false,
+      "routes": [{ "pattern": "share.scarson.io", "custom_domain": true }],
+      "vars": { "ENVIRONMENT": "production", "PUBLIC_ORIGIN": "https://share.scarson.io" },
+      "d1_databases": [{
+        "binding": "DB", "database_name": "artifact-share-prod",
+        "database_id": "<PROD_DB_ID>", "migrations_dir": "migrations"
+      }]
+    }
+  }
   // INVARIANT (spec §4/§7): this file MUST NEVER gain an "assets" key. The build lints this (Task 6.2).
 }
