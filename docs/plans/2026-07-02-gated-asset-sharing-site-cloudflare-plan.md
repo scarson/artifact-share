@@ -76,6 +76,7 @@ notes and commit messages.
 
 ### Deviations
 - **Task 0.3 (2026-07-02, forced by toolchain):** the plan's literal `vitest.config.ts`/`src/test/env.d.ts` target the pre-0.13 pool-workers API. As installed (`@cloudflare/vitest-pool-workers` 0.17.0 / vitest 4.1.9): (a) config uses the current `cloudflareTest()` Vite-plugin API instead of `defineWorkersConfig` (all plan bindings/values preserved verbatim); (b) `env.d.ts` augments the global `Cloudflare.Env` instead of the removed `ProvidedEnv`, with a `/// <reference types="@cloudflare/vitest-pool-workers/types" />`; (c) per-test `isolatedStorage` no longer exists, so the per-test-fresh-D1 semantics the plan's later test suites assume are reconstructed in `src/test/apply-migrations.ts` (a `beforeEach` drops all user tables/views incl. `d1_migrations` — as one FK-safe `env.DB.batch()` led by `PRAGMA defer_foreign_keys = ON`, with identifier escaping and diagnosable wrapped errors, commit 7484368 — then re-applies migrations) and pinned by a permanent probe `src/test/isolation.test.ts` (added beyond the plan's file list to guard this load-bearing property). Downgrading to pool-workers 0.12.x (last `defineWorkersConfig` line) was rejected: its older bundled workerd would predate and reject `compatibility_date: 2026-06-25`. No later task's prescribed test code needs to change.
+- **Task 3.1 (2026-07-02, type-only):** the plan's withTimeout types the timer as `| undefined`, but @cloudflare/workers-types 4.20260702.1 declares `clearTimeout(timeoutId: number | null)` — shipped as `| null = null`. No behavior change; all 10 prescribed tests green unmodified.
 
 ### Discoveries
 - **2026-07-02 — pool-workers ≥0.13.0 rearchitecture:** `@cloudflare/vitest-pool-workers` 0.13.0+ requires vitest ^4.1, removes the `/config` subpath export (`defineWorkersConfig` gone; `readD1Migrations` now exported from the package root), and removes per-test `isolatedStorage` (storage isolation is per test FILE). Verified against the installed package's `exports`/`peerDependencies` and npm registry metadata (cutover confirmed at 0.13.0). See the Task 0.3 deviation for how the plan's semantics are preserved.
@@ -1223,6 +1224,8 @@ git commit -m "feat: versioned key-ring asset+session tokens (v/kid, HS256-pinne
 
 ### Task 3.1: Gate DB operations — atomic redeem + fail-closed recheck
 
+> **DEVIATION (executed 2026-07-02, type-only):** withTimeout's timer is `| null = null` (workers-types' clearTimeout signature); everything else verbatim. See top-of-plan Deviations.
+
 > Spec §6 step 4/5: redemption is ONE atomic conditional `UPDATE … RETURNING` (validate + record
 > usage + compute `iat`/`cookie_exp` on DB time in a single statement — the exact SQL spike-verified
 > in Task 1.1); the per-load recheck is a `unixepoch()` `SELECT` that FAILS CLOSED and is wrapped in
@@ -1235,7 +1238,7 @@ git commit -m "feat: versioned key-ring asset+session tokens (v/kid, HS256-pinne
 **Files:**
 - Create: `src/lib/gate.ts`, `src/lib/gate.test.ts`
 
-- [ ] **Step 1: Write the failing tests** `src/lib/gate.test.ts`:
+- [x] **Step 1: Write the failing tests** `src/lib/gate.test.ts`:
 
 ```ts
 import { env } from "cloudflare:test";
@@ -1323,9 +1326,9 @@ test("redeem THROWS (fail closed at the caller) when the DB throws", async () =>
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- gate` → FAIL (module not found).
+- [x] **Step 2: Run to verify fail** — `npm test -- gate` → FAIL (module not found).
 
-- [ ] **Step 3: Implement** `src/lib/gate.ts`:
+- [x] **Step 3: Implement** `src/lib/gate.ts`:
 
 ```ts
 export type Redeemed = { codeId: string; iatSec: number; cookieExpSec: number };
@@ -1385,9 +1388,9 @@ export async function recheck(db: D1Database, codeId: string, slug: string): Pro
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- gate` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- gate` → PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/gate.ts src/lib/gate.test.ts
