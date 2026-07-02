@@ -69,8 +69,8 @@ notes and commit messages.
 | 1 — D1 dialect spike (risk-first) | ✅ Shipped 2026-07-02 | 385e0e1 | both remote proofs ✓ (expression DEFAULT; atomic UPDATE…RETURNING) — Phase 3 unblocked |
 | 2 — Schema, codes & signed tokens | ✅ Shipped 2026-07-02 | 83ecbbf, 1bd08ae, 009c435, 608d5ca | gate review: 3/3 rounds clean (incl. 30-probe adversarial token review) |
 | 3 — Gate route, cookie, headers, limiter | ✅ Shipped 2026-07-02 | 2e8cc00, e1c3444, 5b272cd, 85df3c2 | gate review 3/3 clean (adversarial: no revocation bypass, fail-closed/open split verified; §6 step→test mapped; Phase 4–6 dry-compiled) |
-| 4 — Admin auth (WASM argon2id + TOTP) | 🚧 In progress | — | claimed 2026-07-02T18:59:58Z, branch `dev` |
-| 5 — Admin panel UI | ⬜ Not started | — | — |
+| 4 — Admin auth (WASM argon2id + TOTP) | ✅ Shipped 2026-07-02 | 3baf7bd, 7c2fa78, 03712d1, 7c18222 | gate 3/3 clean (adversarial auth boundary; §8 mapped; Phase 5 dry-compiled). KDF swapped hash-wasm→@noble/hashes (Deviations) |
+| 5 — Admin panel UI | 🚧 In progress | — | claimed 2026-07-02T19:47:04Z, branch `dev` |
 | 6 — Asset pipeline (generator + module map) | ⬜ Not started | — | — |
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
 
@@ -2128,7 +2128,7 @@ git commit -m "feat: bucketed+global atomic rate limiting (fails open), valid-co
 
 ## Phase 4 — Admin auth (WASM argon2id + TOTP)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T18:59:58Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits 3baf7bd (4.1), 7c2fa78 (4.2), 03712d1 (4.3), 7c18222 (gate: login-throttle coverage). Gate 3 rounds clean: adversarial (auth boundary — password-before-TOTP, CSRF, session forgery, env-gate all held under probing), spec §8 (requirement→test mapped; throttle-coverage gap closed by 7c18222), cross-task (Phase 5 slot-in dry-compiled). Deviations: 4.1 KDF hash-wasm→@noble/hashes (security preserved), 4.3 throttle syntax fix.
 
 > Read `docs/pitfalls/implementation-pitfalls.md` → "Bootstrap hash must be byte-compatible",
 > "TOTP: consume the step only AFTER the password verifies". Assertion-rigor rule from Phase 3
@@ -2667,7 +2667,7 @@ git commit -m "feat: key-ring session, pinned-origin CSRF, TOTP-after-password l
 
 ## Phase 5 — Admin panel UI
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T19:47:04Z, branch `dev`
 
 > Depends on Phase 4 (auth). The manifest shape `{ [slug]: { title } }` is already fixed (Task 3.2);
 > the fixture asset gives the panel a real entry to list.
