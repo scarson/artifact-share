@@ -68,8 +68,8 @@ notes and commit messages.
 | 0 — Foundation & pitfalls docs | ✅ Shipped 2026-07-02 | 0ec129d, 279f6b5, fee8995, f5c1aa0, 7484368 | gate review: 3/3 rounds clean; Task 0.3 deviation recorded |
 | 1 — D1 dialect spike (risk-first) | ✅ Shipped 2026-07-02 | 385e0e1 | both remote proofs ✓ (expression DEFAULT; atomic UPDATE…RETURNING) — Phase 3 unblocked |
 | 2 — Schema, codes & signed tokens | ✅ Shipped 2026-07-02 | 83ecbbf, 1bd08ae, 009c435, 608d5ca | gate review: 3/3 rounds clean (incl. 30-probe adversarial token review) |
-| 3 — Gate route, cookie, headers, limiter | 🚧 In progress | — | claimed 2026-07-02T18:27:42Z, branch `dev` |
-| 4 — Admin auth (WASM argon2id + TOTP) | ⬜ Not started | — | — |
+| 3 — Gate route, cookie, headers, limiter | ✅ Shipped 2026-07-02 | 2e8cc00, e1c3444, 5b272cd, 85df3c2 | gate review 3/3 clean (adversarial: no revocation bypass, fail-closed/open split verified; §6 step→test mapped; Phase 4–6 dry-compiled) |
+| 4 — Admin auth (WASM argon2id + TOTP) | 🚧 In progress | — | claimed 2026-07-02T18:59:58Z, branch `dev` |
 | 5 — Admin panel UI | ⬜ Not started | — | — |
 | 6 — Asset pipeline (generator + module map) | ⬜ Not started | — | — |
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
@@ -1214,7 +1214,7 @@ git commit -m "feat: versioned key-ring asset+session tokens (v/kid, HS256-pinne
 
 ## Phase 3 — Gate route, cookie, headers, limiter
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T18:27:42Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits 2e8cc00 (3.1), e1c3444 (3.2), 5b272cd (3.3), 85df3c2 (3.4). Gate review 3 rounds clean: adversarial security (12 probes; no revocation bypass; cookie only from atomic-redeem success; fail-closed redeem/recheck vs fail-open limiter verified), spec §6 step→code→test mapping complete, cross-task consistency (Phase 4–6 prescribed imports dry-compiled against shipped exports). One type-only deviation (Task 3.1 timer nullability, recorded).
 
 > Depends on Phase 1 (✅ dialect spike) and Phase 2 (tokens, codes). Read
 > `docs/pitfalls/implementation-pitfalls.md` → "Fail closed", "The access code is the entire secret",
@@ -2125,7 +2125,7 @@ git commit -m "feat: bucketed+global atomic rate limiting (fails open), valid-co
 
 ## Phase 4 — Admin auth (WASM argon2id + TOTP)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T18:59:58Z, branch `dev`
 
 > Read `docs/pitfalls/implementation-pitfalls.md` → "Bootstrap hash must be byte-compatible",
 > "TOTP: consume the step only AFTER the password verifies". Assertion-rigor rule from Phase 3
