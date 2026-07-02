@@ -19,3 +19,28 @@ export async function hashCode(code: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Row shape of the `codes` table as D1 returns it (snake_case, INTEGER epoch seconds).
+ *  Has `code_hash`, NEVER a raw `code` (spec §3 D3). */
+export interface CodeRow {
+  id: string;
+  code_hash: string;
+  asset_slug: string;
+  label: string;
+  created_at: number;
+  expires_at: number;
+  revoked_at: number | null;
+  last_used_at: number | null;
+  use_count: number;
+}
+
+/** DISPLAY status for the admin panel ONLY — NOT an authorization check. Real validity is enforced
+ *  in SQL on unixepoch() (spec §5/§6; Tasks 1.1/3.1). Reused by the admin page (Task 5.2). */
+export function codeStatus(
+  row: Pick<CodeRow, "revoked_at" | "expires_at">,
+  nowSec: number,
+): "active" | "expired" | "revoked" {
+  if (row.revoked_at !== null) return "revoked";
+  if (row.expires_at <= nowSec) return "expired";
+  return "active";
+}
