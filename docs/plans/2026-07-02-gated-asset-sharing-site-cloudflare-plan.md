@@ -70,8 +70,8 @@ notes and commit messages.
 | 2 — Schema, codes & signed tokens | ✅ Shipped 2026-07-02 | 83ecbbf, 1bd08ae, 009c435, 608d5ca | gate review: 3/3 rounds clean (incl. 30-probe adversarial token review) |
 | 3 — Gate route, cookie, headers, limiter | ✅ Shipped 2026-07-02 | 2e8cc00, e1c3444, 5b272cd, 85df3c2 | gate review 3/3 clean (adversarial: no revocation bypass, fail-closed/open split verified; §6 step→test mapped; Phase 4–6 dry-compiled) |
 | 4 — Admin auth (WASM argon2id + TOTP) | ✅ Shipped 2026-07-02 | 3baf7bd, 7c2fa78, 03712d1, 7c18222 | gate 3/3 clean (adversarial auth boundary; §8 mapped; Phase 5 dry-compiled). KDF swapped hash-wasm→@noble/hashes (Deviations) |
-| 5 — Admin panel UI | 🚧 In progress | — | claimed 2026-07-02T19:47:04Z, branch `dev` |
-| 6 — Asset pipeline (generator + module map) | ⬜ Not started | — | — |
+| 5 — Admin panel UI | ✅ Shipped 2026-07-02 | 08d12f1, 328ab6a | gate 3/3 clean (XSS-escaping proven, raw-code-never-at-rest, provenance/expiry validation; Phase 6 regen shape-stable) |
+| 6 — Asset pipeline (generator + module map) | 🚧 In progress | — | claimed 2026-07-02T20:03:51Z, branch `dev` |
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
 
 ### Deviations
@@ -2667,7 +2667,7 @@ git commit -m "feat: key-ring session, pinned-origin CSRF, TOTP-after-password l
 
 ## Phase 5 — Admin panel UI
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T19:47:04Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits 08d12f1 (5.1), 328ab6a (5.2). Gate 3 rounds clean: adversarial (raw code never at rest; hono `html` escapes all admin-supplied label/slug in element+attribute contexts — probed with breakout payloads; provenance/expiry/CSRF hold), spec §8 panel-features mapped to named tests, cross-task (Phase 6 manifest regen is shape-stable; revoke↔recheck column semantics match). No deviations.
 
 > Depends on Phase 4 (auth). The manifest shape `{ [slug]: { title } }` is already fixed (Task 3.2);
 > the fixture asset gives the panel a real entry to list.
@@ -3053,7 +3053,7 @@ git commit -m "feat: admin panel — show-once link, no raw-code column, orphan 
 
 ## Phase 6 — Asset pipeline (generator + module-map build)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T20:03:51Z, branch `dev`
 
 > Read `docs/pitfalls/implementation-pitfalls.md` → "NEVER add an assets key", "Confidential manifest
 > is a generated MODULE + generator registry". The build enforces the slug contract Phase 3 relies on
