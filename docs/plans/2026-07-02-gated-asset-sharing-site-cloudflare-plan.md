@@ -81,6 +81,7 @@ notes and commit messages.
 - **2026-07-02 — pool-workers ≥0.13.0 rearchitecture:** `@cloudflare/vitest-pool-workers` 0.13.0+ requires vitest ^4.1, removes the `/config` subpath export (`defineWorkersConfig` gone; `readD1Migrations` now exported from the package root), and removes per-test `isolatedStorage` (storage isolation is per test FILE). Verified against the installed package's `exports`/`peerDependencies` and npm registry metadata (cutover confirmed at 0.13.0). See the Task 0.3 deviation for how the plan's semantics are preserved.
 - **2026-07-02 — Phase 6 anticipation (from the Phase 0 gate review):** Task 6.2's prescribed `src/lib/build/manifest-lib.test.ts` imports `../../../scripts/manifest-lib.mjs`; with the current tsconfig (`include: ["src", ".generated"]`, no `allowJs`) this passes `npm test` but fails `npx tsc --noEmit` with TS7016 (no declaration file). No script currently runs tsc, so nothing breaks as written — but Task 6.2's executor should consciously either add `"allowJs": true` or accept the editor-only gap. Decide then; recorded here so it's anticipated, not discovered.
 - **2026-07-02 — `.nvmrc` is 26.3.0** (plan Task 0.2 Step 2 records the local `node -v` by design) while Conventions/CI say Node 24. All installed deps' `engines` accept both. Align or document the split when Task 7.2 authors the CI workflow.
+- **2026-07-02 — remote D1 dialect spike (Task 1.1) verified:** expression DEFAULT ✓ (delta=7776000 exactly at insert), UPDATE…RETURNING with min()/unixepoch() ✓ (cookie_exp = iat+86400 exactly; zero rows + use_count unchanged on wrong slug). Spike DB artifact-share-spike created and deleted the same session.
 
 ---
 
@@ -689,7 +690,7 @@ git commit -m "chore: workerd vitest harness (pool-workers, local D1 migrations,
 **Files:**
 - Create: `migrations/0001_init.sql`
 
-- [ ] **Step 1: Create `migrations/0001_init.sql`** (spec §5 — INTEGER epoch seconds; DB-side defaults; no plaintext code column):
+- [x] **Step 1: Create `migrations/0001_init.sql`** (spec §5 — INTEGER epoch seconds; DB-side defaults; no plaintext code column):
 
 ```sql
 -- codes: the entire access-control state. NO plaintext code column — code_hash only (spec §3 D3).
@@ -729,7 +730,7 @@ CREATE TABLE meta (
 INSERT INTO meta (key, value) VALUES ('environment', 'development');
 ```
 
-- [ ] **Step 2: Create a throwaway remote spike DB and apply the migration file to it**
+- [x] **Step 2: Create a throwaway remote spike DB and apply the migration file to it**
 
 ```bash
 npx wrangler d1 create artifact-share-spike
@@ -738,7 +739,7 @@ npx wrangler d1 execute artifact-share-spike --remote --file=migrations/0001_ini
 
 Expected: both succeed (execute reports the statements run).
 
-- [ ] **Step 3: Prove the expression DEFAULT on remote D1**
+- [x] **Step 3: Prove the expression DEFAULT on remote D1**
 
 ```bash
 npx wrangler d1 execute artifact-share-spike --remote --command \
@@ -749,7 +750,7 @@ npx wrangler d1 execute artifact-share-spike --remote --command \
 Expected: one row; `delta` within a few seconds of `7776000`; `use_count` 0; `id` a 32-hex string.
 **If the INSERT fails on the DEFAULT:** STOP — the schema needs app-side expiry writes instead; raise before proceeding (this changes spec §5's mechanism, an owner-visible deviation).
 
-- [ ] **Step 4: Prove the atomic redeem statement on remote D1** (the exact production SQL — spec §6 step 4):
+- [x] **Step 4: Prove the atomic redeem statement on remote D1** (the exact production SQL — spec §6 step 4):
 
 ```bash
 npx wrangler d1 execute artifact-share-spike --remote --command \
@@ -771,7 +772,7 @@ npx wrangler d1 execute artifact-share-spike --remote --command \
 
 Expected: the UPDATE returns ZERO rows and `use_count` is still `1` (no usage recorded without access — spec §6 step 4).
 
-- [ ] **Step 5: Delete the spike DB and record the outcome**
+- [x] **Step 5: Delete the spike DB and record the outcome**
 
 ```bash
 npx wrangler d1 delete artifact-share-spike -y
@@ -781,7 +782,7 @@ npx wrangler d1 delete artifact-share-spike -y
 
 Record in the top-of-plan **Discoveries**: "remote D1 verified 2026-MM-DD — expression DEFAULT ✓, UPDATE…RETURNING with min()/unixepoch() ✓ (cookie_exp correct, zero-row on wrong slug)".
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add migrations/0001_init.sql docs/plans/2026-07-02-gated-asset-sharing-site-cloudflare-plan.md
