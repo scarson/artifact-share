@@ -71,8 +71,8 @@ notes and commit messages.
 | 3 — Gate route, cookie, headers, limiter | ✅ Shipped 2026-07-02 | 2e8cc00, e1c3444, 5b272cd, 85df3c2 | gate review 3/3 clean (adversarial: no revocation bypass, fail-closed/open split verified; §6 step→test mapped; Phase 4–6 dry-compiled) |
 | 4 — Admin auth (WASM argon2id + TOTP) | ✅ Shipped 2026-07-02 | 3baf7bd, 7c2fa78, 03712d1, 7c18222 | gate 3/3 clean (adversarial auth boundary; §8 mapped; Phase 5 dry-compiled). KDF swapped hash-wasm→@noble/hashes (Deviations) |
 | 5 — Admin panel UI | ✅ Shipped 2026-07-02 | 08d12f1, 328ab6a | gate 3/3 clean (XSS-escaping proven, raw-code-never-at-rest, provenance/expiry validation; Phase 6 regen shape-stable) |
-| 6 — Asset pipeline (generator + module map) | 🚧 In progress | — | claimed 2026-07-02T20:03:51Z, branch `dev` |
-| 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
+| 6 — Asset pipeline (generator + module map) | ✅ Shipped 2026-07-02 | bce602a, b1e8e3b, da7aab2 | gate 3/3 clean; Round 1 found+fixed an assets-key lint evasion (da7aab2, now tested); deterministic build verified for CI |
+| 7 — Environments, deploy pipeline & isolation | 🚧 In progress | — | claimed 2026-07-02T20:33:08Z, branch `dev` — repo artifacts autonomous; Cloudflare-account steps are an operator hand-off |
 
 ### Deviations
 - **Task 6.2 (2026-07-02, gate fix — assets-key lint hardened):** the plan's lint regex `/^\s*"assets"\s*:/m` only caught a line-start key; an inline/compacted `"assets":` (e.g. `"main":"x","assets":{}`) evaded it (Phase 6 gate, adversarial round — confirmed live). Extracted to a tested `hasAssetsKey()` matching `(^|[\s{,])"assets"\s*:` (any key position; no false-positive on the invariant comment). Also added an `lstat` symlink-dir rejection to the asset loop (symlinked asset folders could pull external content into the bundle). Both strengthen the §4/§7 boundary; no runtime/app change.
@@ -3055,7 +3055,7 @@ git commit -m "feat: admin panel — show-once link, no raw-code column, orphan 
 
 ## Phase 6 — Asset pipeline (generator + module-map build)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T20:03:51Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits bce602a (6.1), b1e8e3b (6.2), da7aab2 (gate fix). Gate 3 rounds: adversarial build-enforcement (found the assets-key lint was evadable by an inline/compacted `"assets":` key — FIXED in da7aab2 as a tested `hasAssetsKey()` + symlink-dir rejection, re-probed live), spec §7 (all 13 requirements → code/probe), cross-task (deterministic output for CI git-diff gate; Phase 7 forward-compat). Deviations: tsconfig `allowJs`, advisory-scan regex (documented), assets-key lint hardening.
 
 > Read `docs/pitfalls/implementation-pitfalls.md` → "NEVER add an assets key", "Confidential manifest
 > is a generated MODULE + generator registry". The build enforces the slug contract Phase 3 relies on
@@ -3297,7 +3297,7 @@ git commit -m "feat: build-manifest — registry provenance, generated modules, 
 
 ## Phase 7 — Environments, deploy pipeline & isolation
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T20:33:08Z, branch `dev`. **Split by boundary:** the repository artifacts (wrangler.jsonc env blocks, `.github/workflows/deploy.yml`, `docs/deploy/SETUP.md`) are produced autonomously; every step that touches the Cloudflare account or dashboard (create remote D1s, set real secrets incl. the admin password/TOTP, deploy production, enable Access, verify Workers Builds disabled, run production verification 7.4) is an **OPERATOR HAND-OFF** — see the "Phase 7 operator hand-off" block appended to this phase. Those steps are ⏸ DEFERRED pending the owner (away this session); unblock = owner runs the hand-off commands.
 
 > Infra/config + human-in-the-loop Cloudflare dashboard steps. Read spec §10, §11. Requires
 > `npx wrangler login` / `CLOUDFLARE_API_TOKEN` and (for CI) GitHub repo secrets — human-assisted.
