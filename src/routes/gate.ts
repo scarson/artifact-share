@@ -8,6 +8,7 @@ import { redeem, recheck } from "../lib/gate";
 import { hashCode } from "../lib/codes";
 import { parseKeyRing, signAssetToken, verifyAssetToken } from "../lib/crypto/tokens";
 import { servesTraffic } from "../lib/envgate";
+import { badShapeLimitOk, gateLimitOk } from "../lib/ratelimit";
 
 export const gate = new Hono<{ Bindings: Env }>();
 
@@ -22,7 +23,7 @@ gate.get("/a/:slug", async (c) => {
   // Runtime slug-shape check before ANY DB/map access (spec §6 step 5). Malformed slugs may
   // fast-reject (accepted timing class, spec §6 step 3).
   if (!isValidSlug(slug)) {
-    // LIMITER (Task 3.4): count bad-shape traffic toward the global breaker here.
+    await badShapeLimitOk(c.env.DB); // count junk toward the global breaker (fixed bucket)
     return failurePage();
   }
 
@@ -32,7 +33,7 @@ gate.get("/a/:slug", async (c) => {
   // Redemption precedence (spec §6 step 2): a present ?code ALWAYS re-validates + re-issues,
   // ignoring any existing cookie.
   if (code !== undefined) {
-    // LIMITER (Task 3.4): enforce the redemption limiter here (before the DB hit).
+    if (!(await gateLimitOk(c.env.DB, "redeem", slug))) return failurePage();
     let res: Awaited<ReturnType<typeof redeem>>;
     try {
       res = await redeem(c.env.DB, await hashCode(code), slug);
@@ -70,7 +71,10 @@ gate.get("/a/:slug", async (c) => {
   const token = getCookie(c, cookieName(slug));
   const claims = token ? await verifyAssetToken(token, slug, ring) : null;
   if (!claims) {
-    // LIMITER (Task 3.4): count unauthenticated load-failures toward the limiter here.
+    // Deliberately NOT branching on the result: this request is denied either way (no valid
+    // cookie), and the bump exists purely to feed the per-slug/global counters that protect the
+    // REDEMPTION path. Do not "fix" this into a branch — it would change nothing observable.
+    await gateLimitOk(c.env.DB, "load", slug);
     return failurePage();
   }
   if (!(await recheck(c.env.DB, claims.codeId, slug))) return failurePage(); // instant revoke

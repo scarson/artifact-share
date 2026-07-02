@@ -1,5 +1,5 @@
 import { SELF, env } from "cloudflare:test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { hashCode } from "../lib/codes";
 import app from "../index";
 
@@ -125,4 +125,43 @@ test("manifest URLs are not routable — they land on the generic page (spec §1
     const res = await SELF.fetch(`${BASE}${path}`);
     expect(await res.text()).toContain("invalid or has expired");
   }
+});
+
+test("a signature-valid-cookie load is limiter-EXEMPT but still DB-rechecked", async () => {
+  const code = await seedCode();
+  const r1 = await SELF.fetch(`${BASE}/a/${SLUG}?code=${code}`, { redirect: "manual" });
+  const cookie = r1.headers.get("set-cookie")!.split(";")[0];
+  // Exhaust the per-slug load bucket with unauthenticated (cookie-less) loads…
+  for (let i = 0; i < 25; i++) await SELF.fetch(`${BASE}/a/${SLUG}`);
+  // …the cookie-holder still gets through (exempt), because the route never calls the limiter for
+  // a signature-valid cookie — but revocation still bites (authorization is never skipped):
+  expect((await SELF.fetch(`${BASE}/a/${SLUG}`, { headers: { cookie } })).status).toBe(200);
+  await env.DB.prepare("UPDATE codes SET revoked_at = unixepoch()").run();
+  const denied = await SELF.fetch(`${BASE}/a/${SLUG}`, { headers: { cookie } });
+  expect(await denied.text()).toContain("invalid or has expired");
+});
+
+test("a VALID signed cookie with D1 down is DENIED at the route (fail closed, spec §6 step 5)", async () => {
+  const code = await seedCode();
+  const r1 = await SELF.fetch(`${BASE}/a/${SLUG}?code=${code}`, { redirect: "manual" });
+  const cookie = r1.headers.get("set-cookie")!.split(";")[0];
+  const throwing = { prepare() { throw new Error("db down"); } } as unknown as D1Database;
+  const res = await app.request(`/a/${SLUG}`, { headers: { cookie } }, { ...env, DB: throwing });
+  expect(res.status).toBe(200);
+  const body = await res.text();
+  expect(body).toContain("invalid or has expired");
+  expect(body).not.toContain("fixture ok"); // never served from the cookie alone
+});
+
+test("valid code + MISSING asset module → generic page + alert + NO cookie (spec §13)", async () => {
+  const missing = "missingmodule000000000"; // 22 chars, well-formed, NOT in assetModules
+  await env.DB.prepare("INSERT INTO codes (code_hash, asset_slug) VALUES (?1, ?2)")
+    .bind(await hashCode("integrity-test-code-1"), missing).run();
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const r1 = await app.request(`/a/${missing}?code=integrity-test-code-1`, {}, env);
+  expect(r1.status).toBe(200); // generic page, not a redirect — integrity check runs post-redeem
+  expect(await r1.text()).toContain("invalid or has expired"); // same page to the recipient
+  expect(r1.headers.get("set-cookie")).toBeNull(); // NO cookie for an integrity-failed asset
+  expect(spy).toHaveBeenCalledWith(expect.stringContaining("asset_module_missing"));
+  spy.mockRestore();
 });

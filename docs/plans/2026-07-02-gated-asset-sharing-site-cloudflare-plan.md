@@ -1880,7 +1880,7 @@ git commit -m "feat: uniform security-header middleware, robots, generic not-fou
 - Create: `src/lib/db/rateStore.ts`, `src/lib/ratelimit.ts`, `src/lib/ratelimit.test.ts`
 - Modify: `src/routes/gate.ts` (fill the three `// LIMITER (Task 3.4)` insertion points)
 
-- [ ] **Step 1: Atomic limiter store** `src/lib/db/rateStore.ts` (the spec §5 upsert, verbatim):
+- [x] **Step 1: Atomic limiter store** `src/lib/db/rateStore.ts` (the spec §5 upsert, verbatim):
 
 ```ts
 // ONE statement — no read-then-write (lost updates). Window compared and reset on unixepoch().
@@ -1905,7 +1905,7 @@ export async function bumpRateLimit(db: D1Database, key: string, windowSec: numb
 }
 ```
 
-- [ ] **Step 2: Failing tests** `src/lib/ratelimit.test.ts`:
+- [x] **Step 2: Failing tests** `src/lib/ratelimit.test.ts`:
 
 ```ts
 import { env } from "cloudflare:test";
@@ -1959,9 +1959,9 @@ test("gateLimitOk denies past the per-slug limit and FAILS OPEN on DB error", as
 });
 ```
 
-- [ ] **Step 3: Run to verify fail** — `npm test -- ratelimit` → FAIL (module not found).
+- [x] **Step 3: Run to verify fail** — `npm test -- ratelimit` → FAIL (module not found).
 
-- [ ] **Step 4: Implement** `src/lib/ratelimit.ts`:
+- [x] **Step 4: Implement** `src/lib/ratelimit.ts`:
 
 ```ts
 import { bumpRateLimit } from "./db/rateStore";
@@ -2025,9 +2025,9 @@ export async function loginThrottleMs(db: D1Database): Promise<number> {
 }
 ```
 
-- [ ] **Step 5: Run to verify pass** — `npm test -- ratelimit` → PASS.
+- [x] **Step 5: Run to verify pass** — `npm test -- ratelimit` → PASS.
 
-- [ ] **Step 6: Fill the three insertion points in `src/routes/gate.ts`.** Add the import:
+- [x] **Step 6: Fill the three insertion points in `src/routes/gate.ts`.** Add the import:
 
 ```ts
 import { badShapeLimitOk, gateLimitOk } from "../lib/ratelimit";
@@ -2060,7 +2060,7 @@ Replace the no-valid-cookie `// LIMITER (Task 3.4)` comment so the branch reads:
   }
 ```
 
-- [ ] **Step 7: Add the limiter-exemption integration test** — append to `src/routes/gate.test.ts`:
+- [x] **Step 7: Add the limiter-exemption integration test** — append to `src/routes/gate.test.ts`:
 
 ```ts
 test("a signature-valid-cookie load is limiter-EXEMPT but still DB-rechecked", async () => {
@@ -2110,9 +2110,9 @@ test("valid code + MISSING asset module → generic page + alert + NO cookie (sp
 
 (Add `import { vi } from "vitest";` to the test file's imports if not already present.)
 
-- [ ] **Step 8: Run** — `npm test` → PASS (all).
+- [x] **Step 8: Run** — `npm test` → PASS (all).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A
