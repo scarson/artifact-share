@@ -1408,7 +1408,7 @@ git commit -m "feat: atomic redeem (UPDATE RETURNING iat/cookie_exp on DB time) 
 > The rate limiter is wired in Task 3.4 — this task leaves two clearly-marked `// LIMITER (Task 3.4)`
 > insertion comments so 3.4's diff is exact.
 
-- [ ] **Step 1: Header module** `src/lib/http/headers.ts` (spec §9 — ONE definition of every policy):
+- [x] **Step 1: Header module** `src/lib/http/headers.ts` (spec §9 — ONE definition of every policy):
 
 ```ts
 export const ASSET_CSP =
@@ -1435,7 +1435,7 @@ export function baseHeaders(): Record<string, string> {
 }
 ```
 
-- [ ] **Step 2: Generic failure page** `src/lib/failure.ts` (byte-identical for EVERY failure — spec §3, §6 step 3/5):
+- [x] **Step 2: Generic failure page** `src/lib/failure.ts` (byte-identical for EVERY failure — spec §3, §6 step 3/5):
 
 ```ts
 export const FAILURE_BODY =
@@ -1455,7 +1455,7 @@ export function failurePage(): Response {
 }
 ```
 
-- [ ] **Step 3: Asset + manifest lookups over the generated modules** (no filesystem — spec §7):
+- [x] **Step 3: Asset + manifest lookups over the generated modules** (no filesystem — spec §7):
 
 `src/lib/assets.ts`:
 
@@ -1493,7 +1493,7 @@ export function isKnownSlug(slug: string): boolean {
 }
 ```
 
-- [ ] **Step 4: Environment gate** `src/lib/envgate.ts` (spec §8/§10):
+- [x] **Step 4: Environment gate** `src/lib/envgate.ts` (spec §8/§10):
 
 ```ts
 /** Positive allow (fail closed, spec §8/§10): ONLY `production` serves traffic — preview, unset,
@@ -1523,7 +1523,7 @@ test("servesTraffic: positive allow — production ONLY; everything else inert",
 });
 ```
 
-- [ ] **Step 5: Commit a permanent test-fixture asset** (Phase 3 integration tests need a real slug in
+- [x] **Step 5: Commit a permanent test-fixture asset** (Phase 3 integration tests need a real slug in
   the module map, and `SELF` runs the real compiled Worker — module mocks don't reach it. The fixture
   is dummy content, flows through the same registry the build enforces, and doubles as the Phase 7
   production-verification asset):
@@ -1563,7 +1563,7 @@ export const assetModules: Record<string, string> = {
 };
 ```
 
-- [ ] **Step 6: The gate route** `src/routes/gate.ts` (spec §6 — do NOT log `?code=`, URLs, or cookie values):
+- [x] **Step 6: The gate route** `src/routes/gate.ts` (spec §6 — do NOT log `?code=`, URLs, or cookie values):
 
 ```ts
 import { Hono } from "hono";
@@ -1656,7 +1656,7 @@ gate.get("/a/:slug", async (c) => {
 });
 ```
 
-- [ ] **Step 7: Mount the route** — replace `src/index.ts` with:
+- [x] **Step 7: Mount the route** — replace `src/index.ts` with:
 
 ```ts
 import { Hono } from "hono";
@@ -1673,9 +1673,9 @@ app.route("/", gate);
 export default app;
 ```
 
-- [ ] **Step 8: Run the envgate tests + full suite** — `npm test` → PASS (route integration tests land in 3.3 after the header middleware, so parity assertions aren't split across tasks).
+- [x] **Step 8: Run the envgate tests + full suite** — `npm test` → PASS (route integration tests land in 3.3 after the header middleware, so parity assertions aren't split across tasks).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -A
