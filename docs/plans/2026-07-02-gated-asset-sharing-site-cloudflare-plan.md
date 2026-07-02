@@ -75,6 +75,7 @@ notes and commit messages.
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
 
 ### Deviations
+- **Task 6.2 (2026-07-02, tsconfig allowJs — anticipated):** the prescribed manifest-lib.test.ts imports scripts/manifest-lib.mjs; tsc needs `"allowJs": true` (compilerOptions) to resolve the .mjs types (else TS7016). Added; `checkJs` stays false. Pre-logged in Discoveries; no runtime effect.
 - **Task 0.3 (2026-07-02, forced by toolchain):** the plan's literal `vitest.config.ts`/`src/test/env.d.ts` target the pre-0.13 pool-workers API. As installed (`@cloudflare/vitest-pool-workers` 0.17.0 / vitest 4.1.9): (a) config uses the current `cloudflareTest()` Vite-plugin API instead of `defineWorkersConfig` (all plan bindings/values preserved verbatim); (b) `env.d.ts` augments the global `Cloudflare.Env` instead of the removed `ProvidedEnv`, with a `/// <reference types="@cloudflare/vitest-pool-workers/types" />`; (c) per-test `isolatedStorage` no longer exists, so the per-test-fresh-D1 semantics the plan's later test suites assume are reconstructed in `src/test/apply-migrations.ts` (a `beforeEach` drops all user tables/views incl. `d1_migrations` — as one FK-safe `env.DB.batch()` led by `PRAGMA defer_foreign_keys = ON`, with identifier escaping and diagnosable wrapped errors, commit 7484368 — then re-applies migrations) and pinned by a permanent probe `src/test/isolation.test.ts` (added beyond the plan's file list to guard this load-bearing property). Downgrading to pool-workers 0.12.x (last `defineWorkersConfig` line) was rejected: its older bundled workerd would predate and reject `compatibility_date: 2026-06-25`. No later task's prescribed test code needs to change.
 - **Task 3.1 (2026-07-02, type-only):** the plan's withTimeout types the timer as `| undefined`, but @cloudflare/workers-types 4.20260702.1 declares `clearTimeout(timeoutId: number | null)` — shipped as `| null = null`. No behavior change; all 10 prescribed tests green unmodified.
 - **Task 4.3 (2026-07-02, syntax fix — behavior-identical):** the plan's login-throttle line `await new Promise((r) => setTimeout(r, await loginThrottleMs(c.env.DB)))` is a JS parse error (`await` inside a non-async Promise executor). Shipped as two lines — `const throttleMs = await loginThrottleMs(c.env.DB); await new Promise((r) => setTimeout(r, throttleMs));` — same behavior, valid syntax, with an inline NOTE. `src/routes/admin.ts` is otherwise verbatim; all 8 admin + 4 csrf prescribed tests pass unmodified.
@@ -3130,7 +3131,7 @@ git commit -m "feat: new-asset generator (opaque 128-bit slug, scaffold + proven
 - Create: `scripts/manifest-lib.mjs`, `scripts/build-manifest.mjs`
 - Create: `src/lib/build/manifest-lib.test.ts`
 
-- [ ] **Step 1: Failing test** `src/lib/build/manifest-lib.test.ts` (the pure checks; scan surface per spec §7/§13):
+- [x] **Step 1: Failing test** `src/lib/build/manifest-lib.test.ts` (the pure checks; scan surface per spec §7/§13):
 
 ```ts
 import { expect, test } from "vitest";
@@ -3162,9 +3163,9 @@ test("firstDuplicate finds a repeated registry entry", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- manifest-lib` → FAIL.
+- [x] **Step 2: Run to verify fail** — `npm test -- manifest-lib` → FAIL.
 
-- [ ] **Step 3: Implement the pure lib** `scripts/manifest-lib.mjs`:
+- [x] **Step 3: Implement the pure lib** `scripts/manifest-lib.mjs`:
 
 ```js
 export function extractTitle(html, fallback) {
@@ -3198,9 +3199,9 @@ export function firstDuplicate(list) {
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- manifest-lib` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- manifest-lib` → PASS.
 
-- [ ] **Step 5: Implement the build script** `scripts/build-manifest.mjs`:
+- [x] **Step 5: Implement the build script** `scripts/build-manifest.mjs`:
 
 ```js
 import { readdir, readFile, writeFile, stat } from "node:fs/promises";
@@ -3273,7 +3274,7 @@ await writeFile(path.join(root, ".generated", "assets-modules.ts"), modulesTs);
 console.log(`Wrote .generated modules for ${entries.length} asset(s).`);
 ```
 
-- [ ] **Step 6: Verify end-to-end** (the regenerated modules must keep the fixture working):
+- [x] **Step 6: Verify end-to-end** (the regenerated modules must keep the fixture working):
 
 Run: `npm run build-manifest && npm test`
 Expected: build reports 1 asset (the fixture) + a size line; regenerated `.generated/*.ts` differ from the hand-seeded stubs only in the header comment and key quoting; **all tests still pass** (the fixture entries are semantically identical). Then prove the failure modes:
@@ -3282,7 +3283,7 @@ Expected: build reports 1 asset (the fixture) + a size line; regenerated `.gener
 3. Temporarily add `"assets": {},` under the top level of `wrangler.jsonc` → `npm run build-manifest` → FAIL (config lint). Revert immediately.
 4. Add `<script src="https://evil.example/x.js"></script>` to the fixture HTML → FAIL (advisory scan). Revert.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/ .generated/ src/lib/build/
