@@ -1688,7 +1688,7 @@ git commit -m "feat: /a/:slug gate — atomic redeem, DB-capped cookie, producti
 - Modify: `src/index.ts`
 - Create: `src/routes/gate.test.ts`
 
-- [ ] **Step 1: Header middleware + robots + uniform notFound** — replace `src/index.ts` with:
+- [x] **Step 1: Header middleware + robots + uniform notFound** — replace `src/index.ts` with:
 
 ```ts
 import { Hono } from "hono";
@@ -1726,7 +1726,7 @@ app.notFound(() => failurePage());
 export default app;
 ```
 
-- [ ] **Step 2: Write the integration suite** `src/routes/gate.test.ts` (via `SELF` — the real Worker; fixture slug from Task 3.2):
+- [x] **Step 2: Write the integration suite** `src/routes/gate.test.ts` (via `SELF` — the real Worker; fixture slug from Task 3.2):
 
 ```ts
 import { SELF, env } from "cloudflare:test";
@@ -1859,9 +1859,9 @@ test("manifest URLs are not routable — they land on the generic page (spec §1
 });
 ```
 
-- [ ] **Step 3: Run** — `npm test -- gate` → PASS (all).
+- [x] **Step 3: Run** — `npm test -- gate` → PASS (all).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/index.ts src/routes/gate.test.ts
