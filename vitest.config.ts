@@ -16,7 +16,12 @@ export default defineConfig(async () => {
   return {
     test: {
       include: ["src/**/*.test.ts"],
-      setupFiles: ["./src/test/apply-migrations.ts"]
+      setupFiles: ["./src/test/apply-migrations.ts"],
+      // argon2id is memory-hard by design (~250ms/hash); the admin login-flow tests run several
+      // per test and, under the concurrent worker pool, can exceed Vitest's 5s default. Give the
+      // KDF room so CI (the deploy gate) doesn't red on cost, not correctness. This does NOT weaken
+      // any assertion — it only lengthens the wall-clock budget.
+      testTimeout: 30000
     },
     plugins: [
       cloudflareTest({
