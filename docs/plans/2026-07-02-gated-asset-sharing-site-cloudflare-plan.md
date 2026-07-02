@@ -65,8 +65,8 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| 0 — Foundation & pitfalls docs | 🚧 In progress | — | claimed 2026-07-02T09:27:26Z, branch `dev` |
-| 1 — D1 dialect spike (risk-first) | ⬜ Not started | — | validates the atomic-redeem SQL + expression DEFAULT on real D1 |
+| 0 — Foundation & pitfalls docs | ✅ Shipped 2026-07-02 | 0ec129d, 279f6b5, fee8995, f5c1aa0, 7484368 | gate review: 3/3 rounds clean; Task 0.3 deviation recorded |
+| 1 — D1 dialect spike (risk-first) | 🚧 In progress | — | claimed 2026-07-02T10:05:00Z, branch `dev`; validates the atomic-redeem SQL + expression DEFAULT on real D1 |
 | 2 — Schema, codes & signed tokens | ⬜ Not started | — | — |
 | 3 — Gate route, cookie, headers, limiter | ⬜ Not started | — | — |
 | 4 — Admin auth (WASM argon2id + TOTP) | ⬜ Not started | — | — |
@@ -75,10 +75,12 @@ notes and commit messages.
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
 
 ### Deviations
-- **Task 0.3 (2026-07-02, forced by toolchain):** the plan's literal `vitest.config.ts`/`src/test/env.d.ts` target the pre-0.13 pool-workers API. As installed (`@cloudflare/vitest-pool-workers` 0.17.0 / vitest 4.1.9): (a) config uses the current `cloudflareTest()` Vite-plugin API instead of `defineWorkersConfig` (all plan bindings/values preserved verbatim); (b) `env.d.ts` augments the global `Cloudflare.Env` instead of the removed `ProvidedEnv`, with a `/// <reference types="@cloudflare/vitest-pool-workers/types" />`; (c) per-test `isolatedStorage` no longer exists, so the per-test-fresh-D1 semantics the plan's later test suites assume are reconstructed in `src/test/apply-migrations.ts` (a `beforeEach` drops all user tables/views incl. `d1_migrations`, then re-applies migrations) and pinned by a permanent probe `src/test/isolation.test.ts` (added beyond the plan's file list to guard this load-bearing property). Downgrading to pool-workers 0.12.x (last `defineWorkersConfig` line) was rejected: its older bundled workerd would predate and reject `compatibility_date: 2026-06-25`. No later task's prescribed test code needs to change.
+- **Task 0.3 (2026-07-02, forced by toolchain):** the plan's literal `vitest.config.ts`/`src/test/env.d.ts` target the pre-0.13 pool-workers API. As installed (`@cloudflare/vitest-pool-workers` 0.17.0 / vitest 4.1.9): (a) config uses the current `cloudflareTest()` Vite-plugin API instead of `defineWorkersConfig` (all plan bindings/values preserved verbatim); (b) `env.d.ts` augments the global `Cloudflare.Env` instead of the removed `ProvidedEnv`, with a `/// <reference types="@cloudflare/vitest-pool-workers/types" />`; (c) per-test `isolatedStorage` no longer exists, so the per-test-fresh-D1 semantics the plan's later test suites assume are reconstructed in `src/test/apply-migrations.ts` (a `beforeEach` drops all user tables/views incl. `d1_migrations` — as one FK-safe `env.DB.batch()` led by `PRAGMA defer_foreign_keys = ON`, with identifier escaping and diagnosable wrapped errors, commit 7484368 — then re-applies migrations) and pinned by a permanent probe `src/test/isolation.test.ts` (added beyond the plan's file list to guard this load-bearing property). Downgrading to pool-workers 0.12.x (last `defineWorkersConfig` line) was rejected: its older bundled workerd would predate and reject `compatibility_date: 2026-06-25`. No later task's prescribed test code needs to change.
 
 ### Discoveries
 - **2026-07-02 — pool-workers ≥0.13.0 rearchitecture:** `@cloudflare/vitest-pool-workers` 0.13.0+ requires vitest ^4.1, removes the `/config` subpath export (`defineWorkersConfig` gone; `readD1Migrations` now exported from the package root), and removes per-test `isolatedStorage` (storage isolation is per test FILE). Verified against the installed package's `exports`/`peerDependencies` and npm registry metadata (cutover confirmed at 0.13.0). See the Task 0.3 deviation for how the plan's semantics are preserved.
+- **2026-07-02 — Phase 6 anticipation (from the Phase 0 gate review):** Task 6.2's prescribed `src/lib/build/manifest-lib.test.ts` imports `../../../scripts/manifest-lib.mjs`; with the current tsconfig (`include: ["src", ".generated"]`, no `allowJs`) this passes `npm test` but fails `npx tsc --noEmit` with TS7016 (no declaration file). No script currently runs tsc, so nothing breaks as written — but Task 6.2's executor should consciously either add `"allowJs": true` or accept the editor-only gap. Decide then; recorded here so it's anticipated, not discovered.
+- **2026-07-02 — `.nvmrc` is 26.3.0** (plan Task 0.2 Step 2 records the local `node -v` by design) while Conventions/CI say Node 24. All installed deps' `engines` accept both. Align or document the split when Task 7.2 authors the CI workflow.
 
 ---
 
@@ -162,7 +164,7 @@ phases (2–6 run entirely against local D1).
 
 ## Phase 0 — Foundation & pitfalls docs
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T09:27:26Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commits 0ec129d (0.1), 279f6b5 (0.2), fee8995 + f5c1aa0 + 7484368 (0.3, see Deviations). Gate review: 3 rounds (security, spec conformance, cross-task consistency), all clean.
 
 > Why this phase first: establishes the toolchain, the workerd test harness every later task depends
 > on, and the project-specific pitfalls docs the TDD blocks reference. Pitfalls are seeded from the
@@ -174,7 +176,7 @@ phases (2–6 run entirely against local D1).
 - Create: `docs/pitfalls/implementation-pitfalls.md`
 - Create: `docs/pitfalls/testing-pitfalls.md`
 
-- [ ] **Step 1: Create `docs/pitfalls/implementation-pitfalls.md`** with this content:
+- [x] **Step 1: Create `docs/pitfalls/implementation-pitfalls.md`** with this content:
 
 ```markdown
 # Implementation Pitfalls (project-specific, Cloudflare)
@@ -298,7 +300,7 @@ Accepted for trusted admin authoring, but §15 Q2 promotes sandboxed-iframe rend
 recommended reconsideration — direct top-frame render is a conscious owner decision.
 ```
 
-- [ ] **Step 2: Create `docs/pitfalls/testing-pitfalls.md`** with this content:
+- [x] **Step 2: Create `docs/pitfalls/testing-pitfalls.md`** with this content:
 
 ```markdown
 # Testing Pitfalls (project-specific, Cloudflare)
@@ -366,7 +368,7 @@ placeholder hash makes login tests verify garbage). A fresh clone must run `npm 
 no extra setup.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/pitfalls/
@@ -382,7 +384,7 @@ git commit -m "docs: seed Cloudflare project pitfalls docs from the ported desig
 - Create: `.dev.vars.example`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Create `package.json`** (exact content; versions resolve at install):
+- [x] **Step 1: Create `package.json`** (exact content; versions resolve at install):
 
 ```json
 {
@@ -402,7 +404,7 @@ git commit -m "docs: seed Cloudflare project pitfalls docs from the ported desig
 }
 ```
 
-- [ ] **Step 2: Install deps**
+- [x] **Step 2: Install deps**
 
 ```bash
 npm i hono jose otpauth hash-wasm
@@ -413,7 +415,7 @@ node -v | sed 's/^v//' > .nvmrc
 > `hash-wasm` is the WASM argon2id (spec §8) — `@node-rs/argon2` is a native addon and does NOT run
 > on Workers. `jose` and `otpauth` are WebCrypto-based and Workers-compatible (spec §8).
 
-- [ ] **Step 3: Create `tsconfig.json`**
+- [x] **Step 3: Create `tsconfig.json`**
 
 ```json
 {
@@ -432,7 +434,7 @@ node -v | sed 's/^v//' > .nvmrc
 }
 ```
 
-- [ ] **Step 4: Create `wrangler.jsonc`** (top level = local dev; `preview`/`production` env blocks land in Task 7.1):
+- [x] **Step 4: Create `wrangler.jsonc`** (top level = local dev; `preview`/`production` env blocks land in Task 7.1):
 
 ```jsonc
 {
@@ -461,7 +463,7 @@ node -v | sed 's/^v//' > .nvmrc
 }
 ```
 
-- [ ] **Step 5: Create `src/env.ts`** (single source of truth for bindings):
+- [x] **Step 5: Create `src/env.ts`** (single source of truth for bindings):
 
 ```ts
 export interface Env {
@@ -478,7 +480,7 @@ export interface Env {
 }
 ```
 
-- [ ] **Step 6: Create `src/index.ts`** (hello skeleton; real routes land in Phases 3–5):
+- [x] **Step 6: Create `src/index.ts`** (hello skeleton; real routes land in Phases 3–5):
 
 ```ts
 import { Hono } from "hono";
@@ -492,7 +494,7 @@ app.get("/", (c) => c.body(null, 200));
 export default app;
 ```
 
-- [ ] **Step 7: Create the committed generated-module stubs** (so a fresh clone compiles before the
+- [x] **Step 7: Create the committed generated-module stubs** (so a fresh clone compiles before the
   first `npm run build-manifest`; the build overwrites them and the results are COMMITTED — the repo
   already contains the asset HTML itself, so these derived modules add no new confidentiality
   exposure, and committing them keeps deploys reproducible from a checkout):
@@ -512,7 +514,7 @@ export const manifest: Record<string, { title: string }> = {};
 export const assetModules: Record<string, string> = {};
 ```
 
-- [ ] **Step 8: Create `src/types/html.d.ts`** (TypeScript needs a module shape for the Text-module
+- [x] **Step 8: Create `src/types/html.d.ts`** (TypeScript needs a module shape for the Text-module
   HTML imports the generated code uses; Wrangler's `rules` covers the runtime, this covers tsc/IDE/tests):
 
 ```ts
@@ -522,7 +524,7 @@ declare module "*.html" {
 }
 ```
 
-- [ ] **Step 8b: Create `.dev.vars.example`** (committed template; copy to `.dev.vars` for local
+- [x] **Step 8b: Create `.dev.vars.example`** (committed template; copy to `.dev.vars` for local
   admin QA — `.dev.vars` itself stays gitignored). The hash below is for the password
   `local-password`; regenerate with `npm run hash-password -- <pw>` after Task 4.1 lands, or use the
   gate-only flows (which need no admin secrets) until then:
@@ -539,7 +541,7 @@ SESSION_SECRET=k1:local-session-secret-not-for-prod-000000000000
 ASSET_COOKIE_SECRET=k1:local-asset-secret-not-for-prod-0000000000000
 ```
 
-- [ ] **Step 9: Append to `.gitignore`**
+- [x] **Step 9: Append to `.gitignore`**
 
 ```
 node_modules/
@@ -549,12 +551,12 @@ node_modules/
 !.dev.vars.example
 ```
 
-- [ ] **Step 10: Verify dev server boots**
+- [x] **Step 10: Verify dev server boots**
 
 Run: `npx wrangler dev` then in another shell `curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8787/`
 Expected: `200`. Stop the dev server (Ctrl-C).
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add -A
@@ -573,7 +575,7 @@ git commit -m "chore: scaffold Hono Worker (wrangler, TS, generated-module stubs
 - Create: `vitest.config.ts`, `src/test/apply-migrations.ts`, `src/test/env.d.ts`, `src/test/smoke.test.ts`
 - Create: `migrations/.gitkeep` (dir exists before Phase 1 fills it)
 
-- [ ] **Step 1: Create `vitest.config.ts`** (runs tests inside workerd; real local D1; bindings for tests):
+- [x] **Step 1: Create `vitest.config.ts`** (runs tests inside workerd; real local D1; bindings for tests):
 
 ```ts
 import { fileURLToPath } from "node:url";
@@ -615,7 +617,7 @@ export default defineWorkersConfig(async () => {
 });
 ```
 
-- [ ] **Step 2: Create `src/test/apply-migrations.ts`**
+- [x] **Step 2: Create `src/test/apply-migrations.ts`**
 
 ```ts
 import { applyD1Migrations, env } from "cloudflare:test";
@@ -624,7 +626,7 @@ import { applyD1Migrations, env } from "cloudflare:test";
 await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 ```
 
-- [ ] **Step 3: Create `src/test/env.d.ts`**
+- [x] **Step 3: Create `src/test/env.d.ts`**
 
 ```ts
 import type { D1Migration } from "@cloudflare/vitest-pool-workers/config";
@@ -637,7 +639,7 @@ declare module "cloudflare:test" {
 }
 ```
 
-- [ ] **Step 4: Create `src/test/smoke.test.ts`**
+- [x] **Step 4: Create `src/test/smoke.test.ts`**
 
 ```ts
 import { SELF, env } from "cloudflare:test";
@@ -655,12 +657,12 @@ test("test bindings are wired", () => {
 });
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `mkdir -p migrations && touch migrations/.gitkeep && npm test`
 Expected: PASS (2 tests). If `readD1Migrations` errors on the empty dir, keep `.gitkeep` and confirm the dir exists — an empty migrations list is valid.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -673,7 +675,7 @@ git commit -m "chore: workerd vitest harness (pool-workers, local D1 migrations,
 
 ## Phase 1 — D1 dialect spike (RISK-FIRST)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T10:05:00Z, branch `dev`
 
 > Why now: spec §12 replaces the Vercel bundling spike with a **dialect spike** — the two load-bearing
 > SQLite mechanisms (the atomic `UPDATE … RETURNING` with `min()`/`unixepoch()`, and the expression
