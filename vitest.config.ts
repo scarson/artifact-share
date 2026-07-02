@@ -1,0 +1,48 @@
+import { fileURLToPath } from "node:url";
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
+import { defineConfig } from "vitest/config";
+
+// DEVIATION from the plan's literal file contents (see docs/pitfalls + Task 0.3 report): the
+// installed @cloudflare/vitest-pool-workers is 0.17.0 (Vitest 4), which replaced
+// `defineWorkersConfig`/`defineWorkersProject` (from a now-removed "/config" subpath) with a
+// `cloudflareTest()` Vite plugin exported from the package root, per Cloudflare's official
+// "Migrate from Vitest 3 to Vitest 4" guide. `readD1Migrations` now lives on the same root
+// entrypoint. The plan's bindings, migrations wiring, and comments are preserved as-is below —
+// only the config *shape* changed (options that were `test.poolOptions.workers.*` are now passed
+// directly to `cloudflareTest()`).
+export default defineConfig(async () => {
+  // ESM config ("type": "module") — __dirname does not exist here; derive from import.meta.url.
+  const migrations = await readD1Migrations(fileURLToPath(new URL("./migrations", import.meta.url)));
+  return {
+    test: {
+      include: ["src/**/*.test.ts"],
+      setupFiles: ["./src/test/apply-migrations.ts"]
+    },
+    plugins: [
+      cloudflareTest({
+        wrangler: { configPath: "./wrangler.jsonc" },
+        // NOTE: `isolatedStorage`/`singleWorker` were removed in the v0.13.0 (Vitest 4) rearchitecture.
+        // Storage isolation is now per TEST FILE (not per test), matching Vitest's own isolation model —
+        // this still satisfies the load-bearing requirement that tests seeding fixed hashes/rows get a
+        // fresh D1 (migrations re-apply via the setup file below), as long as such tests don't share a
+        // file with each other in ways that assume per-test (not per-file) isolation.
+        miniflare: {
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            // Tests exercise the PRODUCTION code paths by default (gate+admin serve). Env-variant
+            // behavior (preview-inert) is tested via app.request(path, init, envOverride).
+            ENVIRONMENT: "production",
+            PUBLIC_ORIGIN: "https://share.test",
+            SESSION_SECRET: "k1:test-session-secret-do-not-use-in-prod-0000000000",
+            ASSET_COOKIE_SECRET: "k1:test-asset-secret-do-not-use-in-prod-00000000000",
+            ADMIN_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
+            // Placeholder until Task 4.1 Step 6 replaces it with a REAL hash-wasm argon2id hash of
+            // the literal test password "test-password". Login-flow tests verify against this value;
+            // do not ship the placeholder — see docs/pitfalls/testing-pitfalls.md.
+            ADMIN_PASSWORD_HASH: "PLACEHOLDER-REPLACED-IN-TASK-4.1"
+          }
+        }
+      })
+    ]
+  };
+});
