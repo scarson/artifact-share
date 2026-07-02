@@ -2836,7 +2836,7 @@ git commit -m "feat: orphan detection + admin repo (hash-on-insert, DB-side expi
 - Modify: `src/routes/admin.ts` (replace the placeholder `GET /admin`; add the two POST actions)
 - Create: `src/routes/adminPanel.test.ts`
 
-- [ ] **Step 1: Replace the placeholder panel in `src/routes/admin.ts`.** Add imports:
+- [x] **Step 1: Replace the placeholder panel in `src/routes/admin.ts`.** Add imports:
 
 ```ts
 import { findOrphans, isKnownSlug, readManifest } from "../lib/manifest";
@@ -2938,7 +2938,7 @@ admin.post("/admin/revoke", async (c) => {
 > the Task 4.3 middleware already guards `/admin/*`; duplicating it invites drift. **No styling** is
 > in scope (plain HTML). **Do NOT** add new columns, sorting, or pagination — YAGNI (spec §14).
 
-- [ ] **Step 2: Write the panel tests** `src/routes/adminPanel.test.ts`:
+- [x] **Step 2: Write the panel tests** `src/routes/adminPanel.test.ts`:
 
 ```ts
 import { SELF, env } from "cloudflare:test";
@@ -3038,9 +3038,9 @@ test("panel mutations without a session are unreachable (redirect to login)", as
 });
 ```
 
-- [ ] **Step 3: Run** — `npm test -- adminPanel` → PASS.
+- [x] **Step 3: Run** — `npm test -- adminPanel` → PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/routes/admin.ts src/routes/adminPanel.test.ts
