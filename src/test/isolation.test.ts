@@ -9,6 +9,8 @@ import { expect, test } from "vitest";
 //
 // Order matters: vitest runs tests within a file sequentially by declaration order (this file
 // has no `describe.concurrent`/`test.concurrent`), so test 2 relies on test 1 having already run.
+// This also relies on vitest's default non-shuffled declaration-order sequence — `sequence.shuffle`
+// must stay off (it isn't set in vitest.config.ts, and must not be enabled there).
 
 test("1) creates a table and row that would leak into the next test without per-test reset", async () => {
   await env.DB.prepare("CREATE TABLE probe_leak (x INTEGER)").run();

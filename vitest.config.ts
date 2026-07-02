@@ -24,8 +24,10 @@ export default defineConfig(async () => {
         // NOTE: `isolatedStorage`/`singleWorker` were removed in the v0.13.0 (Vitest 4) rearchitecture.
         // Storage isolation is now per TEST FILE (not per test), matching Vitest's own isolation model —
         // this still satisfies the load-bearing requirement that tests seeding fixed hashes/rows get a
-        // fresh D1 (migrations re-apply via the setup file below), as long as such tests don't share a
-        // file with each other in ways that assume per-test (not per-file) isolation.
+        // fresh D1 (migrations re-apply via the setup file below). The beforeEach hook in
+        // src/test/apply-migrations.ts restores per-test semantics on top of this per-file isolation, so
+        // the one remaining constraint is: don't use `test.concurrent`/`describe.concurrent` within a
+        // file, since concurrent tests interleave and would race that shared reset.
         miniflare: {
           bindings: {
             TEST_MIGRATIONS: migrations,

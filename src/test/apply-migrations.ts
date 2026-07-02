@@ -23,15 +23,39 @@ beforeEach(async () => {
        AND name NOT LIKE '_cf_%'`
   ).all<{ name: string; type: "table" | "view" }>();
 
-  for (const { name, type } of objects.results) {
-    // Quote the identifier to safely handle any table/view name sqlite_master returns.
-    // `d1_migrations` (migration bookkeeping) matches this query too and is intentionally
-    // included so migrations re-apply cleanly on the next line. Use prepare().run() rather than
-    // D1Database#exec(), which parses its input as newline-delimited statements and is not
-    // meant for general-purpose single-statement execution.
-    await env.DB.prepare(`DROP ${type.toUpperCase()} IF EXISTS "${name}"`).run();
-  }
+  const names = objects.results.map((o) => o.name);
 
-  // Dropping a table implicitly drops its indexes, so no separate index cleanup is needed.
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  try {
+    if (objects.results.length > 0) {
+      // Quote (and escape embedded quotes in) each identifier to safely handle any table/view
+      // name sqlite_master returns. `d1_migrations` (migration bookkeeping) matches this query
+      // too and is intentionally included so migrations re-apply cleanly below.
+      //
+      // All drops run as ONE env.DB.batch() call, in a single transaction, with
+      // `PRAGMA defer_foreign_keys = ON` as the first statement. D1 enforces foreign keys by
+      // default, so dropping tables one-by-one (in sqlite_master's arbitrary order) can fail
+      // when a table is dropped before the tables that reference it. Deferring FK checks to
+      // commit means every DROP in the batch has already happened by the time constraints are
+      // (re-)checked, so drop order stops mattering — this removes the FK-ordering hazard AND
+      // the O(n) sequential round trips of issuing one prepare().run() per object.
+      const statements = [
+        env.DB.prepare("PRAGMA defer_foreign_keys = ON"),
+        ...objects.results.map(({ name, type }) => {
+          const escaped = name.replace(/"/g, '""');
+          return env.DB.prepare(`DROP ${type.toUpperCase()} IF EXISTS "${escaped}"`);
+        })
+      ];
+
+      // Dropping a table implicitly drops its indexes, so no separate index cleanup is needed.
+      await env.DB.batch(statements);
+    }
+
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to reset local D1 before test (dropping ${names.join(", ")}): ${message}`,
+      { cause: error }
+    );
+  }
 });
