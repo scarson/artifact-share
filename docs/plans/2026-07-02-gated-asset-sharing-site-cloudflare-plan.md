@@ -2678,7 +2678,7 @@ git commit -m "feat: key-ring session, pinned-origin CSRF, TOTP-after-password l
 - Modify: `src/lib/manifest.ts`
 - Create: `src/lib/manifest.test.ts`, `src/lib/db/adminRepo.ts`, `src/lib/db/adminRepo.test.ts`
 
-- [ ] **Step 1: Failing test** `src/lib/manifest.test.ts` (orphan detection — spec §8):
+- [x] **Step 1: Failing test** `src/lib/manifest.test.ts` (orphan detection — spec §8):
 
 ```ts
 import { expect, test } from "vitest";
@@ -2696,9 +2696,9 @@ test("isKnownSlug reflects the generated manifest (fixture present)", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify fail** — `npm test -- manifest` → FAIL (`findOrphans` not defined).
+- [x] **Step 2: Run to verify fail** — `npm test -- manifest` → FAIL (`findOrphans` not defined).
 
-- [ ] **Step 3: Implement** — append to `src/lib/manifest.ts`:
+- [x] **Step 3: Implement** — append to `src/lib/manifest.ts`:
 
 ```ts
 /** Codes whose asset_slug left the manifest (asset renamed/deleted) — flagged in the panel (spec §8). */
@@ -2708,9 +2708,9 @@ export function findOrphans(codes: { asset_slug: string }[], m: Manifest): strin
 }
 ```
 
-- [ ] **Step 4: Run to verify pass** — `npm test -- manifest` → PASS.
+- [x] **Step 4: Run to verify pass** — `npm test -- manifest` → PASS.
 
-- [ ] **Step 5: Admin repo + tests.**
+- [x] **Step 5: Admin repo + tests.**
 
 `src/lib/db/adminRepo.ts`:
 
@@ -2821,9 +2821,9 @@ test("revokeCode sets revoked_at on DB time", async () => {
 });
 ```
 
-- [ ] **Step 6: Run** — `npm test -- adminRepo manifest` → PASS.
+- [x] **Step 6: Run** — `npm test -- adminRepo manifest` → PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/manifest.ts src/lib/manifest.test.ts src/lib/db/adminRepo.ts src/lib/db/adminRepo.test.ts
