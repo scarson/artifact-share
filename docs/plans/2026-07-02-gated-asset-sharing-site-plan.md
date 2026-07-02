@@ -6,6 +6,7 @@
 > (spec: [`…-design.cloudflare.md`](../design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md)).
 > Different plans for different deployments — neither supersedes the other. Both implement the same
 > security model; keep security-relevant fixes in sync across the pair.
+> Sync log 2026-07-02: three fixes ported from the Cloudflare sibling's review — CSRF malformed-Origin reject (Task 4.3), jose requiredClaims + exp/cookieExp binding (Task 2.4), strict expiry-input validation (Task 5.2).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -865,6 +866,26 @@ test("strict schema: a session token is NOT accepted as an asset token (extra/wr
   expect(await verifyAssetToken(sess, "s", ringA)).toBeNull();
 });
 
+test("a correctly-signed token WITHOUT exp is rejected (requiredClaims)", async () => {
+  const { SignJWT } = await import("jose");
+  const forged = await new SignJWT({ v: 1, slug: "s", codeId: "id1", cookieExp: soon() })
+    .setProtectedHeader({ alg: "HS256", kid: "k1" })
+    .setIssuedAt()
+    .sign(new TextEncoder().encode("secret-alpha-000000000000000000000000000000")); // no setExpirationTime
+  expect(await verifyAssetToken(forged, "s", ringA)).toBeNull();
+});
+
+test("a token whose exp disagrees with cookieExp is rejected (binding check)", async () => {
+  const { SignJWT } = await import("jose");
+  const exp = soon();
+  const skewed = await new SignJWT({ v: 1, slug: "s", codeId: "id1", cookieExp: exp - 999 })
+    .setProtectedHeader({ alg: "HS256", kid: "k1" })
+    .setIssuedAt()
+    .setExpirationTime(exp)
+    .sign(new TextEncoder().encode("secret-alpha-000000000000000000000000000000"));
+  expect(await verifyAssetToken(skewed, "s", ringA)).toBeNull();
+});
+
 test("parseKeyRing rejects empty secrets and duplicate kids", () => {
   expect(() => parseKeyRing("k1:")).toThrow();
   expect(() => parseKeyRing("k1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,k1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).toThrow();
@@ -925,7 +946,12 @@ async function verify(ring: KeyRing, token: string): Promise<Record<string, unkn
   const entry = ring.find((e) => e.kid === kid);
   if (!entry) return null; // unknown/retired kid → reject
   try {
-    const { payload } = await jwtVerify(token, entry.key, { algorithms: ["HS256"] }); // pin alg; enforce exp
+    // Pin alg; REQUIRE exp+iat to exist (jose only enforces exp when present — a signed no-exp
+    // token must not verify); jose then enforces the exp value.
+    const { payload } = await jwtVerify(token, entry.key, {
+      algorithms: ["HS256"],
+      requiredClaims: ["exp", "iat"],
+    });
     if (payload.v !== V) return null; // unknown schema version → reject
     return payload as Record<string, unknown>;
   } catch {
@@ -952,6 +978,7 @@ export async function verifyAssetToken(token: string, expectedSlug: string, ring
   if (!keysOk(p, ["v", "iat", "exp", "slug", "codeId", "cookieExp"])) return null; // reject extra fields
   if (p.slug !== expectedSlug) return null;                                          // no cross-asset replay
   if (typeof p.codeId !== "string" || typeof p.cookieExp !== "number") return null;
+  if (p.exp !== p.cookieExp) return null; // the enforced exp IS the DB-computed cookie_exp — no drift
   return { slug: p.slug, codeId: p.codeId, cookieExp: p.cookieExp };
 }
 
@@ -1791,14 +1818,15 @@ function originOf(url: string | null): string | null {
   try { return new URL(url).origin; } catch { return null; }
 }
 
-/** True iff this state-changing request is same-origin with PRODUCTION_ORIGIN. Origin is required;
- *  if absent (some same-origin POSTs omit it) fall back to Referer; missing/malformed/cross-site → false. */
+/** True iff this state-changing request is same-origin with PRODUCTION_ORIGIN. A PRESENT Origin
+ *  decides alone — a malformed Origin is a REJECT, never a fallback; only an ABSENT Origin falls
+ *  back to a Referer same-origin check; missing-both ⇒ reject. */
 export async function originOk(): Promise<boolean> {
   const expected = process.env.PRODUCTION_ORIGIN;
   if (!expected) return false; // misconfig → fail closed
   const h = await headers();
-  const origin = originOf(h.get("origin"));
-  if (origin !== null) return origin === expected;
+  const originHeader = h.get("origin");
+  if (originHeader !== null) return originOf(originHeader) === expected;
   const referer = originOf(h.get("referer"));
   return referer !== null && referer === expected;
 }
@@ -1936,6 +1964,10 @@ test("falls back to Referer when Origin absent; rejects when both absent", async
   process.env.PRODUCTION_ORIGIN = "https://x.example";
   withHeaders({ referer: "https://x.example/admin" }); expect(await originOk()).toBe(true);
   withHeaders({}); expect(await originOk()).toBe(false);
+});
+test("a malformed PRESENT Origin is rejected even with a valid Referer (no fallback)", async () => {
+  process.env.PRODUCTION_ORIGIN = "https://x.example";
+  withHeaders({ origin: "not a url", referer: "https://x.example/admin" }); expect(await originOk()).toBe(false);
 });
 ```
 
@@ -2133,9 +2165,20 @@ export async function createCodeAction(_prev: unknown, form: FormData): Promise<
   const label = String(form.get("label") ?? "");
   const dateRaw = String(form.get("date") ?? "").trim(); // absolute date — wins if present
   const daysRaw = String(form.get("days") ?? "").trim(); // duration in days
+  // Invalid input is an ERROR, never a silent fall-through to the 90-day default. Days must be a
+  // positive INTEGER; dates must round-trip (Date normalizes impossible dates like 2026-02-31).
   let expiry: ExpirySpec = null;
-  if (dateRaw) { const d = new Date(dateRaw); if (!Number.isNaN(d.getTime())) expiry = { at: d }; }
-  else if (daysRaw) { const n = Number(daysRaw); if (Number.isFinite(n) && n > 0) expiry = { days: n }; }
+  if (dateRaw) {
+    const ms = Date.parse(`${dateRaw}T23:59:59Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw) || Number.isNaN(ms)
+      || new Date(ms).toISOString().slice(0, 10) !== dateRaw) {
+      return { error: "invalid expiry date" };
+    }
+    expiry = { at: new Date(ms) };
+  } else if (daysRaw) {
+    if (!/^\d+$/.test(daysRaw) || Number(daysRaw) <= 0) return { error: "expiry days must be a positive integer" };
+    expiry = { days: Number(daysRaw) };
+  }
   const code = await createCode(slug, label, expiry);
   revalidatePath("/admin");
   // Show ONCE — the raw code is not persisted and cannot be recovered (spec §8, §3 D3).

@@ -386,7 +386,7 @@ git commit -m "docs: seed Cloudflare project pitfalls docs from the ported desig
 
 ```json
 {
-  "name": "share-site",
+  "name": "artifact-share",
   "private": true,
   "type": "module",
   "scripts": {
@@ -437,7 +437,9 @@ node -v | sed 's/^v//' > .nvmrc
 ```jsonc
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "share-site",
+  // Top-level name is LOCAL-DEV ONLY and deliberately differs from the production Worker
+  // ("artifact-share") so a bare `wrangler deploy` (no --env) can never clobber production.
+  "name": "artifact-share-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-25",
   // Spec §10: no accidental public hostnames. Both pinned explicitly, never defaulted.
@@ -449,7 +451,7 @@ node -v | sed 's/^v//' > .nvmrc
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "share-site-dev",
+      "database_name": "artifact-share-dev",
       // Placeholder UUID: local dev + tests never contact remote D1. Real per-env IDs in Task 7.1.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
@@ -722,8 +724,8 @@ INSERT INTO meta (key, value) VALUES ('environment', 'development');
 - [ ] **Step 2: Create a throwaway remote spike DB and apply the migration file to it**
 
 ```bash
-npx wrangler d1 create share-site-spike
-npx wrangler d1 execute share-site-spike --remote --file=migrations/0001_init.sql
+npx wrangler d1 create artifact-share-spike
+npx wrangler d1 execute artifact-share-spike --remote --file=migrations/0001_init.sql
 ```
 
 Expected: both succeed (execute reports the statements run).
@@ -731,7 +733,7 @@ Expected: both succeed (execute reports the statements run).
 - [ ] **Step 3: Prove the expression DEFAULT on remote D1**
 
 ```bash
-npx wrangler d1 execute share-site-spike --remote --command \
+npx wrangler d1 execute artifact-share-spike --remote --command \
   "INSERT INTO codes (code_hash, asset_slug) VALUES ('spikehash1','spikeslugAAAAAAAAAAAAA'); \
    SELECT id, expires_at - unixepoch() AS delta, use_count FROM codes;"
 ```
@@ -742,7 +744,7 @@ Expected: one row; `delta` within a few seconds of `7776000`; `use_count` 0; `id
 - [ ] **Step 4: Prove the atomic redeem statement on remote D1** (the exact production SQL — spec §6 step 4):
 
 ```bash
-npx wrangler d1 execute share-site-spike --remote --command \
+npx wrangler d1 execute artifact-share-spike --remote --command \
   "UPDATE codes SET use_count = use_count + 1, last_used_at = unixepoch() \
    WHERE code_hash = 'spikehash1' AND revoked_at IS NULL AND expires_at > unixepoch() \
    AND asset_slug = 'spikeslugAAAAAAAAAAAAA' \
@@ -752,7 +754,7 @@ npx wrangler d1 execute share-site-spike --remote --command \
 Expected: ONE row with `id`, `iat` ≈ now, `cookie_exp` = `iat + 86400` (24h < 90d). Then the negative case:
 
 ```bash
-npx wrangler d1 execute share-site-spike --remote --command \
+npx wrangler d1 execute artifact-share-spike --remote --command \
   "UPDATE codes SET use_count = use_count + 1, last_used_at = unixepoch() \
    WHERE code_hash = 'spikehash1' AND revoked_at IS NULL AND expires_at > unixepoch() \
    AND asset_slug = 'WRONG' RETURNING id; \
@@ -764,7 +766,7 @@ Expected: the UPDATE returns ZERO rows and `use_count` is still `1` (no usage re
 - [ ] **Step 5: Delete the spike DB and record the outcome**
 
 ```bash
-npx wrangler d1 delete share-site-spike -y
+npx wrangler d1 delete artifact-share-spike -y
 ```
 
 (`-y` skips the interactive confirmation — required for a non-interactive executor.)
@@ -2203,7 +2205,7 @@ console.log("\nSet it with: npx wrangler secret put ADMIN_PASSWORD_HASH --env pr
 import * as OTPAuth from "otpauth";
 
 const secret = new OTPAuth.Secret({ size: 20 });
-const totp = new OTPAuth.TOTP({ issuer: "share-site", label: "admin", secret });
+const totp = new OTPAuth.TOTP({ issuer: "artifact-share", label: "admin", secret });
 console.log("Secret (set with: npx wrangler secret put ADMIN_TOTP_SECRET --env production):");
 console.log(secret.base32);
 console.log("\nScan this otpauth URI (recovery = re-run this script, re-put, re-scan):");
@@ -3283,8 +3285,8 @@ git commit -m "feat: build-manifest — registry provenance, generated modules, 
 - [ ] **Step 1: Create the two remote databases**
 
 ```bash
-npx wrangler d1 create share-site-prod
-npx wrangler d1 create share-site-preview
+npx wrangler d1 create artifact-share-prod
+npx wrangler d1 create artifact-share-preview
 ```
 
 Record both printed `database_id` UUIDs. (These are configuration values, not plan placeholders —
@@ -3303,22 +3305,30 @@ only thing that ever populates preview — spec §10.)
   },
   "env": {
     "preview": {
+      "name": "artifact-share-preview",
       // Preview is reachable ONLY at its workers.dev hostname, which Task 7.3 puts behind
       // Cloudflare Access. The app-level ENVIRONMENT gate keeps /a/* and /admin inert regardless.
       "workers_dev": true,
-      "vars": { "ENVIRONMENT": "preview", "PUBLIC_ORIGIN": "https://share-site-preview.<your-subdomain>.workers.dev" },
+      "vars": { "ENVIRONMENT": "preview", "PUBLIC_ORIGIN": "https://artifact-share-preview.samuel-carson.workers.dev" },
       "d1_databases": [{
-        "binding": "DB", "database_name": "share-site-preview",
+        "binding": "DB", "database_name": "artifact-share-preview",
         "database_id": "<PREVIEW_DB_ID>", "migrations_dir": "migrations"
       }]
     },
     "production": {
+      // Deploys to the EXISTING production Worker (custom domain share.scarson.io already bound).
+      "name": "artifact-share",
       "workers_dev": false,
+      // NOTE (owner-visible, spec §10): this deliberately DISABLES the currently-enabled
+      // *-artifact-share.samuel-carson.workers.dev version-preview URLs on the production Worker.
+      // Version previews of production run with PRODUCTION bindings (prod D1 + ENVIRONMENT=
+      // production) — a live, non-custom-domain door into confidential content. Previews belong to
+      // the separate artifact-share-preview Worker (empty DB, Access-gated) instead.
       "preview_urls": false,
-      "routes": [{ "pattern": "share.example.com", "custom_domain": true }],
-      "vars": { "ENVIRONMENT": "production", "PUBLIC_ORIGIN": "https://share.example.com" },
+      "routes": [{ "pattern": "share.scarson.io", "custom_domain": true }],
+      "vars": { "ENVIRONMENT": "production", "PUBLIC_ORIGIN": "https://share.scarson.io" },
       "d1_databases": [{
-        "binding": "DB", "database_name": "share-site-prod",
+        "binding": "DB", "database_name": "artifact-share-prod",
         "database_id": "<PROD_DB_ID>", "migrations_dir": "migrations"
       }]
     }
@@ -3330,23 +3340,24 @@ only thing that ever populates preview — spec §10.)
 > missing secrets — see the Wrangler configuration docs, "Secrets configuration property"). Do NOT
 > remove it because an older reference doesn't know it; verify against current docs instead.
 >
-> Wrangler env names deploy as separate Workers (`share-site-preview`, `share-site-production`) with
-> disjoint bindings. Double-check the two `database_id`s against Step 1's output — a mis-pointed
+> The per-env `name` overrides deploy `--env production` onto the EXISTING `artifact-share` Worker
+> (keeping its share.scarson.io custom domain) and `--env preview` onto `artifact-share-preview` —
+> two separate Workers with disjoint bindings. Double-check the two `database_id`s against Step 1's output — a mis-pointed
 > preview→prod binding is exactly the hazard the `meta` guard exists for (spec §10); don't rely on
 > the guard to catch a config you can verify by eye.
 
 - [ ] **Step 3: Apply migrations + set the environment markers**
 
 ```bash
-npx wrangler d1 migrations apply share-site-prod --env production --remote
-npx wrangler d1 migrations apply share-site-preview --env preview --remote
-npx wrangler d1 execute share-site-prod --env production --remote \
+npx wrangler d1 migrations apply artifact-share-prod --env production --remote
+npx wrangler d1 migrations apply artifact-share-preview --env preview --remote
+npx wrangler d1 execute artifact-share-prod --env production --remote \
   --command "UPDATE meta SET value = 'production' WHERE key = 'environment';"
-npx wrangler d1 execute share-site-preview --env preview --remote \
+npx wrangler d1 execute artifact-share-preview --env preview --remote \
   --command "UPDATE meta SET value = 'preview' WHERE key = 'environment';"
 ```
 
-Verify: `npx wrangler d1 execute share-site-prod --env production --remote --command "SELECT * FROM meta;"` → `environment = production` (and `preview` for the other). The marker is the operator's binding-audit signal — it proves each environment is pointed at the intended database (re-checked in Task 7.4); the runtime protection is production-only serving (Task 3.2).
+Verify: `npx wrangler d1 execute artifact-share-prod --env production --remote --command "SELECT * FROM meta;"` → `environment = production` (and `preview` for the other). The marker is the operator's binding-audit signal — it proves each environment is pointed at the intended database (re-checked in Task 7.4); the runtime protection is production-only serving (Task 3.2).
 
 - [ ] **Step 4: Set the secrets — distinct values per environment (spec §10)**
 
@@ -3375,8 +3386,8 @@ npx wrangler secret put ASSET_COOKIE_SECRET --env preview
 npm run build-manifest
 npx wrangler deploy --env preview
 npx wrangler deploy --env production
-curl -sS https://share-site-preview.<your-subdomain>.workers.dev/a/testasset0000000000000
-curl -sS https://share.example.com/robots.txt
+curl -sS https://artifact-share-preview.samuel-carson.workers.dev/a/testasset0000000000000
+curl -sS https://share.scarson.io/robots.txt
 ```
 
 Expected: the preview `/a/*` returns the **generic failure page** (ENVIRONMENT gate — spec §10) even
@@ -3391,6 +3402,16 @@ git commit -m "chore: per-env D1 bindings, required secrets, env markers, previe
 ```
 
 ### Task 7.2: CI deploy pipeline (gated, serialized, forward-only migrations)
+
+**Precondition (owner setup, 2026-07-02): disable Cloudflare Workers Builds for this Worker —
+BOTH the deploy-on-main build and the non-production-branch builds** (dashboard → Workers & Pages →
+artifact-share → Settings → Builds). Rationale: (a) two deployers on `main` (Workers Builds + this
+workflow) would race, and only this workflow runs tests and applies D1 migrations BEFORE the deploy
+(spec §11 ordering); (b) Workers Builds' managed build token is not guaranteed D1-edit scope for
+`wrangler d1 migrations apply`; (c) non-prod-branch builds upload versions of the PRODUCTION Worker,
+which is exactly the version-preview exposure surface Task 7.1 turns off. Verify in the dashboard
+that no build triggers remain before enabling this workflow, and record the confirmation in this
+plan's Execution Status.
 
 **Files:**
 - Create: `.github/workflows/deploy.yml`
@@ -3428,7 +3449,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER_ENV: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-      DB_NAME: ${{ github.ref == 'refs/heads/main' && 'share-site-prod' || 'share-site-preview' }}
+      DB_NAME: ${{ github.ref == 'refs/heads/main' && 'artifact-share-prod' || 'artifact-share-preview' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -3462,11 +3483,11 @@ git commit -m "ci: gated deploy pipeline — tests, forward-only D1 migrations, 
   **Precondition:** the owner has ratified §15 Q3 (Access on non-prod). If unconfirmed, ASK before
   proceeding; if declined, skip this step, record the decision in this plan's Deviations + spec §15,
   and rely on the app-level gate alone (it is the fail-closed boundary either way). In the Cloudflare dashboard: **Workers & Pages →
-  share-site-preview → Settings → Domains & Routes → workers.dev → Enable Cloudflare Access**; edit
+  artifact-share-preview → Settings → Domains & Routes → workers.dev → Enable Cloudflare Access**; edit
   the generated policy to allow ONLY the owner's email. Verify:
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" https://share-site-preview.<your-subdomain>.workers.dev/
+curl -sS -o /dev/null -w "%{http_code}\n" https://artifact-share-preview.samuel-carson.workers.dev/
 ```
 
 Expected: a `302` to `cloudflareaccess.com` (NOT the app). The app-level ENVIRONMENT gate remains
@@ -3487,7 +3508,7 @@ the fail-closed boundary underneath (Task 7.1 Step 5 proved it).
     serve confidential content regardless.
   - **Access decisions (spec §15):** Q3 = Access-on-non-prod **enabled** (Step 1 — owner to ratify);
     Q6 (Access in front of production `/admin`) = **off by default**; to enable later: create a
-    self-hosted Access app for `share.example.com/admin` allowing only the owner — it is an ADDITIONAL
+    self-hosted Access app for `share.scarson.io/admin` allowing only the owner — it is an ADDITIONAL
     layer; never remove the app-level password+TOTP. Q7 (Turnstile) = off; if ever enabled, login page
     ONLY — **never on `/a/*`** (breaks one-click/no-JS recipients). Q8 (zone rate-limiting/WAF) = off;
     if ever enabled: block/throttle actions only, thresholds far above the app limiter, **no challenge
@@ -3502,7 +3523,7 @@ the fail-closed boundary underneath (Task 7.1 Step 5 proved it).
     `console.log` URLs/codes; restrict Cloudflare account membership + API tokens (anyone who can
     deploy can exfiltrate secrets and mint codes — same for the GitHub `CLOUDFLARE_API_TOKEN`).
   - **D1 durability & confidentiality (spec §11):** Time Travel gives 30-day PITR (Workers Paid);
-    `wrangler d1 export share-site-prod --env production --remote --output backup.sql` for periodic
+    `wrangler d1 export artifact-share-prod --env production --remote --output backup.sql` for periodic
     offline exports. Exports and restores contain **client identities (labels) + the sharing graph**
     even with hashed codes — encrypt at rest, restrict access, retention limit, minimal labels.
     Deleting a row is NOT erasure within the 30-day Time Travel window.
@@ -3541,18 +3562,20 @@ git commit -m "docs: deploy runbook — Access on non-prod, zone foot-guns, log 
      `?code=`. Check headers (`curl -sD - -o /dev/null -H "cookie: asset_access_…"` — a GET, not HEAD; only GET is routed): `cache-control: no-store`,
      `strict-transport-security`, `x-content-type-options: nosniff`, CSP with `frame-ancestors 'none'`,
      and **`cf-cache-status` absent or DYNAMIC — never HIT** (spec §9 edge-cache probe).
-  5. **Byte-stability probe (spec §9/§13):** `curl -sS https://share.example.com/a/wrongslug0000000000000` twice;
+  5. **Byte-stability probe (spec §9/§13):** `curl -sS https://share.scarson.io/a/wrongslug0000000000000` twice;
      the bodies are identical to each other AND contain no injected script (no Rocket-Loader/email-
      obfuscation artifacts — confirms the zone foot-guns are off).
   6. **Revoke:** revoke the code in `/admin`; reload the asset in the same browser → generic failure
-     page (instant revocation). `curl https://share.example.com/robots.txt` → `Disallow: /`.
-  7. **No plaintext at rest + binding audit:** `npx wrangler d1 execute share-site-prod --env production --remote
+     page (instant revocation). `curl https://share.scarson.io/robots.txt` → `Disallow: /`.
+  7. **No plaintext at rest + binding audit:** `npx wrangler d1 execute artifact-share-prod --env production --remote
      --command "SELECT name FROM pragma_table_info('codes') WHERE name='code';"` → zero rows (and
      spot-check a `code_hash` value is 64-hex, not a raw code). Then
      `--command "SELECT value FROM meta WHERE key='environment';"` → `production` (and `preview` on
      the preview DB) — each Worker is bound to its intended database.
-  8. **No stray hostnames:** `https://share-site.<your-subdomain>.workers.dev` does not resolve to the
-     production Worker (workers_dev disabled); the production Worker has no preview URLs.
+  8. **No stray hostnames:** `https://artifact-share.samuel-carson.workers.dev` returns an error page,
+     not the app (workers_dev disabled), and the previously-enabled
+     `*-artifact-share.samuel-carson.workers.dev` version-preview URLs no longer resolve
+     (`preview_urls: false` deployed — spec §10; expected and deliberate).
 
 - [ ] **Step 2: Record results** in the plan's Execution Status (Discoveries if anything deviated).
   Revoke the verification code when done.
