@@ -61,7 +61,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Code complete. Phases 0–6 shipped to branch `dev` (each with a ≥3-round gate review, all clean; commits below). Phase 7 repo artifacts shipped; Phase 7 Cloudflare-account steps + production verification (7.4) are an ⏸ operator hand-off (owner away this session — see the Phase 7 hand-off block). Next: final whole-implementation review, then PR `dev` → `main`.
+**Overall:** Code complete — **PR open: [#1](https://github.com/scarson/artifact-share/pull/1)** (`dev` → `main`, pushed `adcf837`). Phases 0–6 shipped to `dev`, each with a ≥3-round gate review (all clean; 2 adversarial findings caught + fixed). Final whole-implementation review = SHIP. Phase 7 repo artifacts shipped; Phase 7 Cloudflare-account steps + production verification (7.4) are an ⏸ operator hand-off (owner away this session — see the Phase 7 hand-off block + `docs/deploy/SETUP.md` §2). Merging `main` deploys once the owner sets the DB IDs, secrets, and confirms Workers Builds is off.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
