@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { extractTitle, externalOriginHits, validateSlug, firstDuplicate } from "../../../scripts/manifest-lib.mjs";
+import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey } from "../../../scripts/manifest-lib.mjs";
 
 test("extractTitle reads <title>, falls back to slug", () => {
   expect(extractTitle("<title>Hi</title>", "slug00000000000000000a")).toBe("Hi");
@@ -24,4 +24,13 @@ test("validateSlug requires 22 base64url chars", () => {
 test("firstDuplicate finds a repeated registry entry", () => {
   expect(firstDuplicate(["a", "b", "a"])).toBe("a");
   expect(firstDuplicate(["a", "b"])).toBeNull();
+});
+
+test("hasAssetsKey catches an assets config key in any position, not just line-start", () => {
+  expect(hasAssetsKey(`  "assets": { "directory": "./public" }`)).toBe(true); // indented
+  expect(hasAssetsKey(`{"assets":{}}`)).toBe(true);                            // minified / after brace
+  expect(hasAssetsKey(`"main": "src/index.ts", "assets": {}`)).toBe(true);    // inline after comma (the evasion)
+  expect(hasAssetsKey(`"assets" : {}`)).toBe(true);                            // space before colon
+  expect(hasAssetsKey(`{ "name": "x", "vars": { "A": "1" } }`)).toBe(false);  // no assets key
+  expect(hasAssetsKey(`// this file MUST NEVER gain an "assets" key`)).toBe(false); // invariant comment (no colon)
 });

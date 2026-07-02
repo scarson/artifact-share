@@ -27,3 +27,12 @@ export function firstDuplicate(list) {
   for (const x of list) { if (seen.has(x)) return x; seen.add(x); }
   return null;
 }
+
+/** True iff wrangler.jsonc contains an `assets` config key (spec §4/§7 — the platform must never
+ *  serve this site's files). Matches a quoted `"assets":` key in ANY position (line-start, after a
+ *  brace/comma, inline) — NOT only at line-start, which a compacted/inline config would evade. The
+ *  `(^|[\s{,])` prefix requires the token to be in JSON key position, so it does not match the word
+ *  "assets" inside a string value or the invariant comment (`"assets" key`, no colon). */
+export function hasAssetsKey(wranglerRaw) {
+  return /(^|[\s{,])"assets"\s*:/.test(wranglerRaw);
+}

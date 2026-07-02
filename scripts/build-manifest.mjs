@@ -1,7 +1,7 @@
-import { readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, stat, lstat } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import path from "node:path";
-import { extractTitle, externalOriginHits, validateSlug, firstDuplicate } from "./manifest-lib.mjs";
+import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey } from "./manifest-lib.mjs";
 
 const root = process.cwd();
 const assetsDir = path.join(root, "assets");
@@ -10,7 +10,7 @@ const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
 // Config lint (spec §4/§7/§13): the platform must never serve this site's files — the Worker is the
 // only door. An "assets" key in wrangler.jsonc would hand confidential HTML to the platform.
 const wranglerRaw = await readFile(path.join(root, "wrangler.jsonc"), "utf8");
-if (/^\s*"assets"\s*:/m.test(wranglerRaw)) {
+if (hasAssetsKey(wranglerRaw)) {
   fail('wrangler.jsonc contains an "assets" key — forbidden (spec §4/§7). Remove it; do not weaken this lint.');
 }
 
@@ -28,6 +28,7 @@ let gzTotal = 0;
 
 for (const slug of dirents.sort()) {
   const dir = path.join(assetsDir, slug);
+  if ((await lstat(dir)).isSymbolicLink()) fail(`asset "${slug}" is a symlink — asset folders must be real directories in the repo (spec §7)`);
   if (!(await stat(dir)).isDirectory()) continue;
   if (!validateSlug(slug)) fail(`slug "${slug}" is not 22 base64url chars`);
   if (!registered.has(slug)) {
