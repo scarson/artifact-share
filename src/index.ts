@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./env";
 import { gate } from "./routes/gate";
+import { admin } from "./routes/admin";
 import { ADMIN_CSP, baseHeaders } from "./lib/http/headers";
 import { failurePage } from "./lib/failure";
 
@@ -25,6 +26,7 @@ app.get("/", (c) => c.body(null, 200));
 app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 
 app.route("/", gate);
+app.route("/", admin);
 
 // Every unknown route returns the SAME generic page (spec §13 deny tests: the manifest URLs land
 // here; no route class is distinguishable from a gate failure).

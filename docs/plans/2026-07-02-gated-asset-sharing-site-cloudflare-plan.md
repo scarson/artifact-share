@@ -2402,7 +2402,7 @@ git commit -m "feat: TOTP verify (±1 window) + D1 replay rejection via totp_use
 - Create: `src/routes/admin.ts`, `src/routes/admin.test.ts`
 - Modify: `src/index.ts` (mount the admin routes)
 
-- [ ] **Step 1: Session helpers** `src/lib/auth/session.ts` (exp lives INSIDE the signed payload — spec §8):
+- [x] **Step 1: Session helpers** `src/lib/auth/session.ts` (exp lives INSIDE the signed payload — spec §8):
 
 ```ts
 import type { Context } from "hono";
@@ -2426,7 +2426,7 @@ export async function isAuthed(c: Context, sessionSecret: string): Promise<boole
 }
 ```
 
-- [ ] **Step 2: CSRF helper + tests.**
+- [x] **Step 2: CSRF helper + tests.**
 
 `src/lib/http/csrf.ts`:
 
@@ -2475,7 +2475,7 @@ test("fails closed when PUBLIC_ORIGIN is unset", () => {
 });
 ```
 
-- [ ] **Step 3: Admin routes** `src/routes/admin.ts` (login + guard; the panel body lands in Task 5.2):
+- [x] **Step 3: Admin routes** `src/routes/admin.ts` (login + guard; the panel body lands in Task 5.2):
 
 ```ts
 import { Hono } from "hono";
@@ -2552,9 +2552,9 @@ admin.post("/admin/login", async (c) => {
 admin.get("/admin", (c) => c.html(html`<!doctype html><meta charset="utf-8"><title>Admin</title><h1>Admin</h1>`));
 ```
 
-- [ ] **Step 4: Mount** — in `src/index.ts`, add `import { admin } from "./routes/admin";` and, next to the gate mount, `app.route("/", admin);` (before `app.notFound`).
+- [x] **Step 4: Mount** — in `src/index.ts`, add `import { admin } from "./routes/admin";` and, next to the gate mount, `app.route("/", admin);` (before `app.notFound`).
 
-- [ ] **Step 5: Security-invariant tests** `src/routes/admin.test.ts`:
+- [x] **Step 5: Security-invariant tests** `src/routes/admin.test.ts`:
 
 ```ts
 import { SELF, env } from "cloudflare:test";
@@ -2651,9 +2651,9 @@ test("login POST with a cross-site or absent Origin is rejected (CSRF, spec §8)
 });
 ```
 
-- [ ] **Step 6: Run** — `npm test -- admin csrf` → PASS (all). Note the TOTP tests share one D1 per test file with isolated storage per test — replay state cannot leak across tests.
+- [x] **Step 6: Run** — `npm test -- admin csrf` → PASS (all). Note the TOTP tests share one D1 per test file with isolated storage per test — replay state cannot leak across tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
