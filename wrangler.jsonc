@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Top-level name is LOCAL-DEV ONLY and deliberately differs from the production Worker
+  // ("artifact-share") so a bare `wrangler deploy` (no --env) can never clobber production.
+  "name": "artifact-share-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-25",
+  // Spec §10: no accidental public hostnames. Both pinned explicitly, never defaulted.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Lets generated code import asset HTML as string modules (spec §7 bundled-module mechanism).
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+  "vars": { "ENVIRONMENT": "development", "PUBLIC_ORIGIN": "http://localhost:8787" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "artifact-share-dev",
+      // Placeholder UUID: local dev + tests never contact remote D1. Real per-env IDs in Task 7.1.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // INVARIANT (spec §4/§7): this file MUST NEVER gain an "assets" key. The build lints this (Task 6.2).
+}

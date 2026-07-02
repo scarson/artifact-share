@@ -1,0 +1,9 @@
+# cp .dev.vars.example .dev.vars   (never commit .dev.vars)
+# ENVIRONMENT=production is the EXPLICIT local-QA opt-in (spec §10): serving is production-only,
+# and this is safe locally because wrangler dev binds the local D1 file, never remote. Do NOT use
+# this override together with remote bindings.
+ENVIRONMENT=production
+ADMIN_PASSWORD_HASH=REPLACE-ME-run-npm-run-hash-password
+ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP
+SESSION_SECRET=k1:local-session-secret-not-for-prod-000000000000
+ASSET_COOKIE_SECRET=k1:local-asset-secret-not-for-prod-0000000000000
