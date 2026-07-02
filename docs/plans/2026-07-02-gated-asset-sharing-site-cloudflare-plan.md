@@ -75,10 +75,10 @@ notes and commit messages.
 | 7 — Environments, deploy pipeline & isolation | ⬜ Not started | — | — |
 
 ### Deviations
-- _(none yet)_
+- **Task 0.3 (2026-07-02, forced by toolchain):** the plan's literal `vitest.config.ts`/`src/test/env.d.ts` target the pre-0.13 pool-workers API. As installed (`@cloudflare/vitest-pool-workers` 0.17.0 / vitest 4.1.9): (a) config uses the current `cloudflareTest()` Vite-plugin API instead of `defineWorkersConfig` (all plan bindings/values preserved verbatim); (b) `env.d.ts` augments the global `Cloudflare.Env` instead of the removed `ProvidedEnv`, with a `/// <reference types="@cloudflare/vitest-pool-workers/types" />`; (c) per-test `isolatedStorage` no longer exists, so the per-test-fresh-D1 semantics the plan's later test suites assume are reconstructed in `src/test/apply-migrations.ts` (a `beforeEach` drops all user tables/views incl. `d1_migrations`, then re-applies migrations) and pinned by a permanent probe `src/test/isolation.test.ts` (added beyond the plan's file list to guard this load-bearing property). Downgrading to pool-workers 0.12.x (last `defineWorkersConfig` line) was rejected: its older bundled workerd would predate and reject `compatibility_date: 2026-06-25`. No later task's prescribed test code needs to change.
 
 ### Discoveries
-- _(none yet)_
+- **2026-07-02 — pool-workers ≥0.13.0 rearchitecture:** `@cloudflare/vitest-pool-workers` 0.13.0+ requires vitest ^4.1, removes the `/config` subpath export (`defineWorkersConfig` gone; `readD1Migrations` now exported from the package root), and removes per-test `isolatedStorage` (storage isolation is per test FILE). Verified against the installed package's `exports`/`peerDependencies` and npm registry metadata (cutover confirmed at 0.13.0). See the Task 0.3 deviation for how the plan's semantics are preserved.
 
 ---
 
@@ -562,6 +562,12 @@ git commit -m "chore: scaffold Hono Worker (wrangler, TS, generated-module stubs
 ```
 
 ### Task 0.3: Wire the workerd test harness
+
+> **DEVIATION (executed 2026-07-02):** implemented against pool-workers 0.17.0 / vitest 4.1.9 — the
+> Step 1/Step 3 file contents below are the plan-time API and do NOT match what shipped. Shipped:
+> `cloudflareTest()` plugin config (same bindings verbatim), global `Cloudflare.Env` augmentation,
+> and per-test-fresh-D1 reconstructed in `apply-migrations.ts` (beforeEach drop+reapply) + pinned by
+> `src/test/isolation.test.ts`. See top-of-plan Deviations. Commits fee8995 + f5c1aa0.
 
 **Files:**
 - Create: `vitest.config.ts`, `src/test/apply-migrations.ts`, `src/test/env.d.ts`, `src/test/smoke.test.ts`
