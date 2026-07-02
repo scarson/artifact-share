@@ -61,7 +61,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** In progress — subagent-driven execution started 2026-07-02 on branch `dev`.
+**Overall:** Code complete. Phases 0–6 shipped to branch `dev` (each with a ≥3-round gate review, all clean; commits below). Phase 7 repo artifacts shipped; Phase 7 Cloudflare-account steps + production verification (7.4) are an ⏸ operator hand-off (owner away this session — see the Phase 7 hand-off block). Next: final whole-implementation review, then PR `dev` → `main`.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
@@ -72,7 +72,7 @@ notes and commit messages.
 | 4 — Admin auth (WASM argon2id + TOTP) | ✅ Shipped 2026-07-02 | 3baf7bd, 7c2fa78, 03712d1, 7c18222 | gate 3/3 clean (adversarial auth boundary; §8 mapped; Phase 5 dry-compiled). KDF swapped hash-wasm→@noble/hashes (Deviations) |
 | 5 — Admin panel UI | ✅ Shipped 2026-07-02 | 08d12f1, 328ab6a | gate 3/3 clean (XSS-escaping proven, raw-code-never-at-rest, provenance/expiry validation; Phase 6 regen shape-stable) |
 | 6 — Asset pipeline (generator + module map) | ✅ Shipped 2026-07-02 | bce602a, b1e8e3b, da7aab2 | gate 3/3 clean; Round 1 found+fixed an assets-key lint evasion (da7aab2, now tested); deterministic build verified for CI |
-| 7 — Environments, deploy pipeline & isolation | 🚧 In progress | — | claimed 2026-07-02T20:33:08Z, branch `dev` — repo artifacts autonomous; Cloudflare-account steps are an operator hand-off |
+| 7 — Environments, deploy pipeline & isolation | 🟡 Repo artifacts shipped / ⏸ account-side deferred | fe63660, 24f85c7, 4eb8f78 | wrangler env blocks + CI workflow + runbook committed; create-DBs/secrets/deploy/Access/verify(7.4) = operator hand-off (see Phase 7 hand-off block) |
 
 ### Deviations
 - **Task 6.2 (2026-07-02, gate fix — assets-key lint hardened):** the plan's lint regex `/^\s*"assets"\s*:/m` only caught a line-start key; an inline/compacted `"assets":` (e.g. `"main":"x","assets":{}`) evaded it (Phase 6 gate, adversarial round — confirmed live). Extracted to a tested `hasAssetsKey()` matching `(^|[\s{,])"assets"\s*:` (any key position; no false-positive on the invariant comment). Also added an `lstat` symlink-dir rejection to the asset loop (symlinked asset folders could pull external content into the bundle). Both strengthen the §4/§7 boundary; no runtime/app change.
@@ -3302,6 +3302,35 @@ git commit -m "feat: build-manifest — registry provenance, generated modules, 
 > Infra/config + human-in-the-loop Cloudflare dashboard steps. Read spec §10, §11. Requires
 > `npx wrangler login` / `CLOUDFLARE_API_TOKEN` and (for CI) GitHub repo secrets — human-assisted.
 
+### Phase 7 operator hand-off (⏸ account-side steps — owner runs when ready)
+
+The autonomous run produced every **repository** artifact and left every **Cloudflare-account /
+dashboard** action to the owner. Full command sequence + rationale is in
+[`docs/deploy/SETUP.md`](../deploy/SETUP.md) §2 ("Operator hand-off"). Summary of what remains:
+
+- **Task 7.1 Steps 1–6 (account):** `wrangler d1 create artifact-share-prod` + `artifact-share-preview`
+  → paste the two real `database_id` UUIDs into `wrangler.jsonc` (replacing `<PROD_DB_ID>` /
+  `<PREVIEW_DB_ID>` — the env blocks + `secrets.required` are already committed, 24f85c7) → apply
+  remote migrations + `UPDATE meta SET value=…` per env → `wrangler secret put` the four secrets per
+  env (**use the REAL admin password via `node scripts/hash-password.mjs`; TOTP via
+  `node scripts/totp-setup.mjs`; ring secrets via `openssl rand -base64 32` prefixed `k1:` — never
+  the test password `test-password`, never a secret containing a comma**) → `wrangler deploy --env
+  preview` then `--env production`.
+- **Task 7.2 (account):** the workflow file is committed (fe63660). Before merging it to `main`:
+  **verify in the dashboard that Cloudflare Workers Builds is DISABLED** for the `artifact-share`
+  Worker (both deploy-on-main and non-prod-branch builds) — this workflow must be the sole deployer —
+  and add GitHub repo secrets `CLOUDFLARE_API_TOKEN` (scoped Workers Scripts:Edit + D1:Edit) +
+  `CLOUDFLARE_ACCOUNT_ID`. Record the Workers-Builds-disabled confirmation here when done.
+- **Task 7.3 Step 1 (dashboard, Q3 ratified):** enable Cloudflare Access on
+  `artifact-share-preview.samuel-carson.workers.dev`, policy = owner email only; verify a `302` to
+  cloudflareaccess.com. (Runbook Step 2 = `docs/deploy/SETUP.md`, committed 4eb8f78.)
+- **Task 7.4 (verification):** the 8-substep production verification runs only after the deploy —
+  ⏸ deferred with it.
+
+Nothing above can be safely automated without the owner present (real credentials + dashboard). The
+repo is deploy-ready: once the DB IDs + secrets are in and Workers Builds is confirmed off, a
+`main` merge deploys.
+
 ### Task 7.1: Per-environment databases, bindings, secrets & environment markers
 
 **Files:**
@@ -3318,7 +3347,7 @@ Record both printed `database_id` UUIDs. (These are configuration values, not pl
 paste them into Step 2. There is NO branching/cloning: both DBs are born empty; migrations are the
 only thing that ever populates preview — spec §10.)
 
-- [ ] **Step 2: Add the environment blocks + required-secrets declaration to `wrangler.jsonc`**
+- [x] **Step 2: Add the environment blocks + required-secrets declaration to `wrangler.jsonc`**
   (merge into the existing config; replace `<PROD_DB_ID>`/`<PREVIEW_DB_ID>` with Step 1's UUIDs and
   the two hostnames with the real ones):
 
@@ -3441,7 +3470,7 @@ plan's Execution Status.
 **Files:**
 - Create: `.github/workflows/deploy.yml`
 
-- [ ] **Step 1: Implement** `.github/workflows/deploy.yml` (spec §11: migrations run ONLY from this
+- [x] **Step 1: Implement** `.github/workflows/deploy.yml` (spec §11: migrations run ONLY from this
   gated step, `main`-only for prod, BEFORE the deploy; `concurrency` serializes concurrent pushes —
   the honest D1 replacement for Postgres advisory locks; rollback is `wrangler rollback` = code-only,
   never schema):
@@ -3518,7 +3547,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" https://artifact-share-preview.samuel-
 Expected: a `302` to `cloudflareaccess.com` (NOT the app). The app-level ENVIRONMENT gate remains
 the fail-closed boundary underneath (Task 7.1 Step 5 proved it).
 
-- [ ] **Step 2: Write the runbook** `docs/deploy/SETUP.md` documenting exactly:
+- [x] **Step 2: Write the runbook** `docs/deploy/SETUP.md` documenting exactly:
   - **Branches (spec §11):** `main` = production, `dev` = integration; work flows `dev` → PR → `main`;
     the Task 7.2 workflow deploys `dev` pushes to the Access-gated preview Worker and `main` merges to
     production (migrations first, serialized).
