@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { expect, test } from "vitest";
 import { bumpRateLimit } from "./db/rateStore";
-import { gateLimitOk, slugKey, PER_SLUG_LIMIT } from "./ratelimit";
+import { gateLimitOk, slugKey, PER_SLUG_LIMIT, loginThrottleMs } from "./ratelimit";
 
 test("slugKey: known slugs get their own bucket; unknown collapse into ONE fixed bucket", () => {
   expect(slugKey("redeem", "known000000000000000aA", () => true)).toBe("redeem:known000000000000000aA");
@@ -46,4 +46,22 @@ test("gateLimitOk denies past the per-slug limit and FAILS OPEN on DB error", as
   expect(await gateLimitOk(env.DB, "redeem", "testasset0000000000000")).toBe(false); // limit + 1
   const throwing = { prepare() { throw new Error("down"); } } as unknown as D1Database;
   expect(await gateLimitOk(throwing, "redeem", "testasset0000000000000")).toBe(true); // fail OPEN
+});
+
+test("loginThrottleMs: first 3 attempts free, then escalates by 500ms, caps at 5000, never denies", async () => {
+  // Fresh window (per-test D1 reset): first three attempts incur no delay.
+  expect(await loginThrottleMs(env.DB)).toBe(0);
+  expect(await loginThrottleMs(env.DB)).toBe(0);
+  expect(await loginThrottleMs(env.DB)).toBe(0);
+  expect(await loginThrottleMs(env.DB)).toBe(500);  // 4th
+  expect(await loginThrottleMs(env.DB)).toBe(1000); // 5th
+  // Drive well past the cap; the return is always a finite delay <= 5000, never a boolean/throw.
+  let last = 0;
+  for (let i = 0; i < 20; i++) last = await loginThrottleMs(env.DB);
+  expect(last).toBe(5000); // capped — a single-admin site must never hard-lock
+});
+
+test("loginThrottleMs FAILS OPEN (returns 0, never throws) on DB error", async () => {
+  const throwing = { prepare() { throw new Error("down"); } } as unknown as D1Database;
+  expect(await loginThrottleMs(throwing)).toBe(0);
 });

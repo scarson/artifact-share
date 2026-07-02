@@ -90,3 +90,16 @@ test("login POST with a cross-site or absent Origin is rejected (CSRF, spec §8)
   const none = { ...loginForm("test-password", validTotp()), headers: { "content-type": "application/x-www-form-urlencoded" } };
   expect((await SELF.fetch(`${BASE}/admin/login`, none)).status).toBe(403);
 });
+
+test("login is never hard-locked: correct credentials succeed even after repeated failures (throttle, not lockout)", async () => {
+  // Three wrong-password attempts (each bumps the throttle counter, none denies outright).
+  for (let i = 0; i < 3; i++) {
+    const bad = await SELF.fetch(`${BASE}/admin/login`, loginForm("wrong-password", "000000"));
+    expect(bad.status).toBe(401);
+  }
+  // A correct password + valid TOTP still logs in (throttle only delays; it never locks out).
+  const ok = await SELF.fetch(`${BASE}/admin/login`, loginForm("test-password", validTotp()));
+  expect(ok.status).toBe(302);
+  expect(ok.headers.get("location")).toContain("/admin");
+  expect(ok.headers.get("set-cookie")).toContain("admin_session=");
+});
