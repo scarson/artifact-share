@@ -66,8 +66,8 @@ notes and commit messages.
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | 0 — Foundation & pitfalls docs | ✅ Shipped 2026-07-02 | 0ec129d, 279f6b5, fee8995, f5c1aa0, 7484368 | gate review: 3/3 rounds clean; Task 0.3 deviation recorded |
-| 1 — D1 dialect spike (risk-first) | 🚧 In progress | — | claimed 2026-07-02T10:05:00Z, branch `dev`; validates the atomic-redeem SQL + expression DEFAULT on real D1 |
-| 2 — Schema, codes & signed tokens | ⬜ Not started | — | — |
+| 1 — D1 dialect spike (risk-first) | ✅ Shipped 2026-07-02 | 385e0e1 | both remote proofs ✓ (expression DEFAULT; atomic UPDATE…RETURNING) — Phase 3 unblocked |
+| 2 — Schema, codes & signed tokens | 🚧 In progress | — | claimed 2026-07-02T10:29:44Z, branch `dev` |
 | 3 — Gate route, cookie, headers, limiter | ⬜ Not started | — | — |
 | 4 — Admin auth (WASM argon2id + TOTP) | ⬜ Not started | — | — |
 | 5 — Admin panel UI | ⬜ Not started | — | — |
@@ -676,7 +676,7 @@ git commit -m "chore: workerd vitest harness (pool-workers, local D1 migrations,
 
 ## Phase 1 — D1 dialect spike (RISK-FIRST)
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T10:05:00Z, branch `dev`
+**Execution Status:** ✅ SHIPPED 2026-07-02 — commit 385e0e1. Both remote-D1 proofs produced the expected rows (see Discoveries); spec §12 gate passed — Phase 3 unblocked. Migration additionally verified through `wrangler d1 migrations apply --local` and the test harness.
 
 > Why now: spec §12 replaces the Vercel bundling spike with a **dialect spike** — the two load-bearing
 > SQLite mechanisms (the atomic `UPDATE … RETURNING` with `min()`/`unixepoch()`, and the expression
@@ -795,7 +795,7 @@ git commit -m "feat: D1 schema migration 0001 (codes/totp_used_steps/rate_limits
 
 ## Phase 2 — Schema properties, codes & signed tokens
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-02T10:29:44Z, branch `dev`
 
 > Read `docs/pitfalls/testing-pitfalls.md` → "Prove the SQL-level invariants against real D1",
 > "Control time". The migration exists (Phase 1); this phase pins its security properties with tests
