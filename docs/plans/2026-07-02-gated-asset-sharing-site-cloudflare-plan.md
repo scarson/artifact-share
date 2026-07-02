@@ -3064,7 +3064,7 @@ git commit -m "feat: admin panel — show-once link, no raw-code column, orphan 
 **Files:**
 - Create: `scripts/new-asset.mjs`
 
-- [ ] **Step 1: Implement** `scripts/new-asset.mjs` (scaffold + register provenance):
+- [x] **Step 1: Implement** `scripts/new-asset.mjs` (scaffold + register provenance):
 
 ```js
 import { randomBytes } from "node:crypto";
@@ -3096,12 +3096,12 @@ console.log("Slug (opaque):", slug);
 console.log("Next: edit the HTML, run 'npm run build-manifest', commit, PR.");
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npm run new-asset -- "Scratch"` then `ls assets/` and `cat .generated/slugs.json`
 Expected: a new 22-char folder with `index.html`; the slug appended to the registry (fixture slug still present). Clean up: `rm -rf assets/<new-slug>` and remove that slug from `.generated/slugs.json` (keep the fixture entry).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add scripts/new-asset.mjs
