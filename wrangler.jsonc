@@ -1,0 +1,115 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// Top-level name is LOCAL-DEV ONLY and deliberately differs from the production Worker
+	// ("artifact-share") so a bare `wrangler deploy` (no --env) can never clobber production.
+	"name": "artifact-share-dev",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-06-25",
+	// Spec §10: no accidental public hostnames. Both pinned explicitly, never defaulted.
+	"workers_dev": false,
+	"preview_urls": false,
+	// Lets generated code import asset HTML as string modules (spec §7 bundled-module mechanism).
+	"rules": [
+		{
+			"type": "Text",
+			"globs": [
+				"**/*.html"
+			],
+			"fallthrough": true
+		}
+	],
+	"vars": {
+		"ENVIRONMENT": "development",
+		"PUBLIC_ORIGIN": "http://localhost:8787",
+		// Local-dev placeholders so the Env is populated even when the local admin bypass is off. The
+		// real Access edge only exists on deployed envs; the bypass flag lives ONLY in .dev.vars (never
+		// here — the build lints this committed config to keep it out).
+		"ACCESS_TEAM_DOMAIN": "https://dev.cloudflareaccess.com",
+		"ACCESS_AUD": "dev-local",
+		"ADMIN_EMAIL": "dev@localhost"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "artifact-share-dev",
+			// Placeholder UUID: local dev + tests never contact remote D1. The REAL per-env database_ids
+			// live in the env.preview / env.production blocks below. NOTE: when running `wrangler d1
+			// create`, DECLINE its "add it on your behalf?" prompt — it appends a NEW top-level binding
+			// with the wrong name; paste the printed UUID into the matching env block's DB binding instead.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	// `secrets.required` is NOT inherited by environments, so it is declared inside each env block below
+	// (not at the top level) — a deploy to that env fails loudly if the secret is unset (spec §10).
+	"env": {
+		"preview": {
+			"name": "artifact-share-preview",
+			// Preview is reachable ONLY at its workers.dev hostname, which Task 7.3 puts behind
+			// Cloudflare Access. The app-level ENVIRONMENT gate keeps /a/* and /admin inert regardless.
+			"workers_dev": true,
+			"secrets": {
+				"required": [
+					"ASSET_COOKIE_SECRET"
+				]
+			},
+			"vars": {
+				"ENVIRONMENT": "preview",
+				"PUBLIC_ORIGIN": "https://artifact-share-preview.samuel-carson.workers.dev",
+				// One Access app covers both preview + production destinations. Admin is inert on preview via
+				// the ENVIRONMENT gate regardless, but the Env is still populated for parity.
+				"ACCESS_TEAM_DOMAIN": "https://samuel-carson.cloudflareaccess.com",
+				"ACCESS_AUD": "b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11",
+				"ADMIN_EMAIL": "samuel.carson@gmail.com"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "artifact-share-preview",
+					"database_id": "37eeeefc-880d-464f-844b-e99cb0db091a",
+					"migrations_dir": "migrations"
+				}
+			]
+		},
+		"production": {
+			// Deploys to the EXISTING production Worker (custom domain share.scarson.io already bound).
+			"name": "artifact-share",
+			"workers_dev": false,
+			// NOTE (owner-visible, spec §10): this deliberately DISABLES the currently-enabled
+			// *-artifact-share.samuel-carson.workers.dev version-preview URLs on the production Worker.
+			// Version previews of production run with PRODUCTION bindings (prod D1 + ENVIRONMENT=
+			// production) — a live, non-custom-domain door into confidential content. Previews belong to
+			// the separate artifact-share-preview Worker (empty DB, Access-gated) instead.
+			"preview_urls": false,
+			"secrets": {
+				"required": [
+					"ASSET_COOKIE_SECRET"
+				]
+			},
+			"routes": [
+				{
+					"pattern": "share.scarson.io",
+					"custom_domain": true
+				}
+			],
+			"vars": {
+				"ENVIRONMENT": "production",
+				"PUBLIC_ORIGIN": "https://share.scarson.io",
+				// Cloudflare Access config for admin auth: JWT issuer/JWKS base, the app's AUD tag, and the
+				// single admin email the Worker re-checks the token's email claim against (spec §8).
+				"ACCESS_TEAM_DOMAIN": "https://samuel-carson.cloudflareaccess.com",
+				"ACCESS_AUD": "b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11",
+				"ADMIN_EMAIL": "samuel.carson@gmail.com"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "artifact-share-prod",
+					"database_id": "220fd2d6-e467-41fb-9eed-30d96b431ebb",
+					"migrations_dir": "migrations"
+				}
+			]
+		}
+	}
+	// INVARIANT (spec §4/§7): this file MUST NEVER gain an "assets" key. The build lints this (Task 6.2).
+}

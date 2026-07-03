@@ -1,0 +1,24 @@
+{
+  "name": "artifact-share",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "npm run build-manifest && wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "new-asset": "node scripts/new-asset.mjs",
+    "build-manifest": "node scripts/build-manifest.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.12.27",
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.17.0",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9",
+    "wrangler": "^4.106.0"
+  }
+}

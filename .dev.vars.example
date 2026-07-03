@@ -1,0 +1,10 @@
+# cp .dev.vars.example .dev.vars   (never commit .dev.vars)
+# ENVIRONMENT=production is the EXPLICIT local-QA opt-in (spec §10): serving is production-only,
+# and this is safe locally because wrangler dev binds the local D1 file, never remote. Do NOT use
+# this override together with remote bindings.
+ENVIRONMENT=production
+ASSET_COOKIE_SECRET=k1:local-asset-secret-not-for-prod-0000000000000
+# Local-dev admin bypass: wrangler dev has no Cloudflare Access edge, so this skips the Access
+# check for local admin QA. MUST stay ONLY in .dev.vars — NEVER put it in wrangler.jsonc or a
+# deployed env. The build lints wrangler.jsonc to enforce that.
+ACCESS_DEV_BYPASS=1
