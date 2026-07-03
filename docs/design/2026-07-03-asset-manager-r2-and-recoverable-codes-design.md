@@ -1,6 +1,6 @@
 # Asset manager on R2 + recoverable share codes — design
 
-**Date:** 2026-07-03 · **Status:** PROPOSED (awaiting owner review) · **Supersedes:** spec §7's
+**Date:** 2026-07-03 · **Status:** APPROVED by owner 2026-07-03 (with amendment: keep original zip + per-asset Download) · **Supersedes:** spec §7's
 git-native asset pipeline (bundled Text modules) and spec §3 D3's hash-only code storage.
 **Brainstorm mode:** owner-directed self-answered (owner set the requirements and asked the agent
 to answer the open questions itself).
@@ -91,8 +91,12 @@ right Cloudflare primitives.
 ### Storage layout (R2)
 
 ```
-a/<slug>/<version>/<path…>     e.g. a/x7Kf…/(3)/index.html, a/x7Kf…/3/data/chart.json
+a/<slug>/<version>/<path…>       e.g. a/x7Kf…/3/index.html, a/x7Kf…/3/data/chart.json
+orig/<slug>/<version>.zip        original upload, bundles only (admin Download source)
 ```
+
+The `orig/` prefix is deliberately OUTSIDE the `a/` tree the gate serves from, so the original
+zip is reachable only through the admin download route — never by recipients.
 
 - Slugs stay opaque fixed-length server-minted tokens (unchanged provenance rule: the server
   mints them at asset creation; clients never choose them).
@@ -131,8 +135,9 @@ into the existing atomic redeem statement where possible.
 1. `POST /admin/assets` multipart form: `title`, `file` (`.html` or `.zip`), auto-activate flag
    (default on). New version of an existing asset: `POST /admin/assets/:slug/versions`.
 2. Single HTML file → stored as `index.html`. Zip → **unzipped at upload time** (fflate), each
-   entry stored as its own object. Unzip-at-upload beats unzip-per-request: CPU spent once, and
-   serving stays a straight R2 streamed read.
+   entry stored as its own object, and the original zip preserved at `orig/<slug>/<version>.zip`
+   (owner-requested — the admin Download source for bundles). Unzip-at-upload beats
+   unzip-per-request: CPU spent once, and serving stays a straight R2 streamed read.
 3. Zip safety (enforced before any write): entry-count cap (200), per-file cap (25 MB), total
    uncompressed cap (100 MB), reject absolute paths / `..` traversal / symlinks / duplicate
    normalized paths; require a root `index.html`; extension→content-type allowlist (html, css,
@@ -160,8 +165,11 @@ into the existing atomic redeem statement where possible.
 ### Versions & delete (admin UI)
 
 Assets section above the codes table: per asset — title, slug (copyable), active version,
-version list with **Activate** (instant rollback = point at an older version), **Delete
-version** (inactive versions only; deletes the R2 prefix), **Delete asset** (requires zero
+version list with **Activate** (instant rollback = point at an older version), **Download**
+(admin-only route `GET /admin/assets/:slug/download?version=N`, default = active version:
+bundles stream the preserved original zip from `orig/…`; single-file assets stream the
+`index.html`), **Delete version** (inactive versions only; deletes both the `a/` and `orig/`
+prefixes), **Delete asset** (requires zero
 active codes or an explicit confirm; auto-revokes remaining codes, deletes all prefixes, keeps
 the D1 rows tombstoned for the codes table's orphan display). Upload form supports "new asset"
 and "new version of existing".
@@ -190,7 +198,7 @@ and "new version of existing".
 | Question | Answer | Why |
 |---|---|---|
 | Encrypt codes vs plaintext? | Encrypt (AES-GCM, secret key ring) | Keeps DB-dump safety; recoverability only via the running, Access-gated Worker |
-| Keep original zip in R2? | No | YAGNI — versions are immutable; re-upload to change; revisit if a re-download need appears |
+| Keep original zip in R2? | **Yes** (owner-ratified) | Stored under `orig/` outside the gate-served tree; powers the admin Download action |
 | Unzip when? | At upload | CPU once, streaming reads forever; per-request unzip complicates everything |
 | Presigned direct uploads? | Deferred | Worker-proxied multipart is enough at realistic sizes; fewer credentials/surfaces |
 | Delete asset with live codes? | Confirm + auto-revoke | Delete means "kill access"; silent orphaning is the worst outcome |
