@@ -60,6 +60,14 @@ npx wrangler d1 create artifact-share-prod
 npx wrangler d1 create artifact-share-preview
 ```
 
+> ⚠️ **`wrangler d1 create` will offer: _"Would you like Wrangler to add it on your behalf?"_ — answer NO.**
+> Its auto-add appends a NEW **top-level** `d1_databases` binding with a wrong name (e.g.
+> `artifact_share_prod`), which does NOT fill the per-environment `DB` binding this config uses — you'd
+> get `d1_databases binding … at the top level, but not on env.production` warnings and the env would
+> still point at a placeholder. Decline the prompt and paste the UUID into the env block yourself (below).
+> If you already accepted: delete the stray top-level bindings and move the UUIDs into the env `DB`
+> bindings (this is exactly the repair committed in `fa1cf84`).
+
 Each command prints a `database_id` UUID. Copy each UUID into
 `wrangler.jsonc`, replacing the matching placeholder:
 
