@@ -147,7 +147,7 @@ admin.post("/admin/codes", async (c) => {
     if (!/^\d+$/.test(daysRaw) || Number(daysRaw) <= 0) return badInput("expiry days must be a positive integer");
     expiry = { days: Number(daysRaw) };
   }
-  const code = await createCode(c.env.DB, slug, label, expiry);
+  const code = await createCode(c.env.DB, slug, label, expiry, c.env.CODE_VAULT_KEY);
   // Show ONCE (spec §8, §3 D3): the raw code is not persisted and cannot be recovered.
   const oneTimeLink = `${c.env.PUBLIC_ORIGIN}/a/${slug}?code=${code}`;
   return c.html(panelPage({ oneTimeLink, host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)));

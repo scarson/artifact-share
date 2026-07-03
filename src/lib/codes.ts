@@ -25,6 +25,8 @@ export async function hashCode(code: string): Promise<string> {
 export interface CodeRow {
   id: string;
   code_hash: string;
+  /** AES-GCM ciphertext of the raw code ("kid:iv:ct", vault.ts) — NULL = minted pre-vault. */
+  code_enc: string | null;
   asset_slug: string;
   label: string;
   created_at: number;
