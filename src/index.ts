@@ -4,6 +4,7 @@ import { gate } from "./routes/gate";
 import { admin } from "./routes/admin";
 import { ADMIN_CSP, baseHeaders } from "./lib/http/headers";
 import { failurePage } from "./lib/failure";
+import { displayHost, publicPage } from "./lib/ui/styles";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -25,8 +26,18 @@ app.use("*", async (c, next) => {
   }
 });
 
-// Spec §9: "/" is deliberately neutral/blank — nothing to enumerate.
-app.get("/", (c) => c.body(null, 200));
+// Spec §9: "/" is deliberately neutral — nothing to enumerate. Owner-requested (2026-07-03): a
+// minimal identity page instead of a blank 200. It names the host and states invitation-only
+// access; no links, no listings, nothing that invites probing.
+app.get("/", (c) => {
+  const host = displayHost(c.env.PUBLIC_ORIGIN);
+  return c.html(publicPage(
+    host,
+    `<span class="seal" aria-hidden="true"></span>` +
+      `<h1>${host}</h1>` +
+      `<p>A private space for shared work. Access is by invitation only.</p>`,
+  ));
+});
 
 // Spec §9: robots.txt Disallow: / — rendered by the Worker (there are no static files).
 app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
