@@ -1,6 +1,6 @@
 import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
-import { parseKeyRing, signAssetToken, verifyAssetToken, signSession, verifySession } from "./tokens";
+import { parseKeyRing, signAssetToken, verifyAssetToken } from "./tokens";
 
 const ringA = parseKeyRing("k1:secret-alpha-000000000000000000000000000000");
 const soon = () => Math.floor(Date.now() / 1000) + 3600;
@@ -41,8 +41,14 @@ test("rejects a token whose kid is not in the ring", async () => {
   expect(await verifyAssetToken(tok, "s", foreign)).toBeNull();
 });
 
-test("strict schema: a session token is NOT accepted as an asset token", async () => {
-  const sess = await signSession(ringA, soon()); // has `sub`, lacks slug/codeId/cookieExp
+test("strict schema: a session-shaped token is NOT accepted as an asset token", async () => {
+  const { SignJWT } = await import("jose");
+  // A token with `sub` but no slug/codeId/cookieExp — the shape the old admin session used.
+  const sess = await new SignJWT({ v: 1, sub: "admin" })
+    .setProtectedHeader({ alg: "HS256", kid: "k1" })
+    .setIssuedAt()
+    .setExpirationTime(soon())
+    .sign(new TextEncoder().encode("secret-alpha-000000000000000000000000000000"));
   expect(await verifyAssetToken(sess, "s", ringA)).toBeNull();
 });
 
@@ -69,10 +75,4 @@ test("a token whose exp disagrees with cookieExp is rejected (binding check)", a
 test("parseKeyRing rejects empty secrets and duplicate kids", () => {
   expect(() => parseKeyRing("k1:")).toThrow();
   expect(() => parseKeyRing("k1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,k1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).toThrow();
-});
-
-test("session round-trips and rejects a foreign ring", async () => {
-  const tok = await signSession(ringA, soon());
-  expect(await verifySession(tok, ringA)).toBe(true);
-  expect(await verifySession(tok, parseKeyRing("k1:totally-different-secret-22222222222222222222"))).toBe(false);
 });

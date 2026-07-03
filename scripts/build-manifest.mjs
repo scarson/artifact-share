@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile, stat, lstat } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import path from "node:path";
-import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey } from "./manifest-lib.mjs";
+import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey, hasDevBypass } from "./manifest-lib.mjs";
 
 const root = process.cwd();
 const assetsDir = path.join(root, "assets");
@@ -12,6 +12,9 @@ const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
 const wranglerRaw = await readFile(path.join(root, "wrangler.jsonc"), "utf8");
 if (hasAssetsKey(wranglerRaw)) {
   fail('wrangler.jsonc contains an "assets" key — forbidden (spec §4/§7). Remove it; do not weaken this lint.');
+}
+if (hasDevBypass(wranglerRaw)) {
+  fail('wrangler.jsonc contains ACCESS_DEV_BYPASS — that local-dev admin bypass must live ONLY in .dev.vars, never in a committed/deployed config (spec §8).');
 }
 
 // The committed registry is the ONLY provenance source (spec §7 D2 backstop).

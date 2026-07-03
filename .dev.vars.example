@@ -3,7 +3,8 @@
 # and this is safe locally because wrangler dev binds the local D1 file, never remote. Do NOT use
 # this override together with remote bindings.
 ENVIRONMENT=production
-ADMIN_PASSWORD_HASH=REPLACE-ME-run-npm-run-hash-password
-ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP
-SESSION_SECRET=k1:local-session-secret-not-for-prod-000000000000
 ASSET_COOKIE_SECRET=k1:local-asset-secret-not-for-prod-0000000000000
+# Local-dev admin bypass: wrangler dev has no Cloudflare Access edge, so this skips the Access
+# check for local admin QA. MUST stay ONLY in .dev.vars — NEVER put it in wrangler.jsonc or a
+# deployed env. The build lints wrangler.jsonc to enforce that.
+ACCESS_DEV_BYPASS=1

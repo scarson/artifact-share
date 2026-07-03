@@ -36,3 +36,10 @@ export function firstDuplicate(list) {
 export function hasAssetsKey(wranglerRaw) {
   return /(^|[\s{,])"assets"\s*:/.test(wranglerRaw);
 }
+
+/** True iff wrangler.jsonc mentions ACCESS_DEV_BYPASS at all. That local-dev admin bypass must
+ *  live ONLY in the gitignored .dev.vars — its presence in the committed wrangler.jsonc (any env
+ *  block) could disable admin auth in production. The build fails on it. */
+export function hasDevBypass(wranglerRaw) {
+  return /ACCESS_DEV_BYPASS/.test(wranglerRaw);
+}

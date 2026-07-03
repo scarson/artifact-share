@@ -79,12 +79,3 @@ export async function verifyAssetToken(token: string, expectedSlug: string, ring
   if (p.exp !== p.cookieExp) return null; // the enforced exp IS the DB-computed cookie_exp — no drift
   return { slug: p.slug, codeId: p.codeId, cookieExp: p.cookieExp };
 }
-
-export async function signSession(ring: KeyRing, exp: number): Promise<string> {
-  return await sign(ring, { sub: "admin" }, exp);
-}
-
-export async function verifySession(token: string, ring: KeyRing): Promise<boolean> {
-  const p = await verify(ring, token);
-  return !!p && keysOk(p, ["v", "iat", "exp", "sub"]) && p.sub === "admin";
-}

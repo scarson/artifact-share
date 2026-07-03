@@ -4,7 +4,6 @@ import { isKnownSlug } from "./manifest";
 export const WINDOW_SEC = 60;
 export const PER_SLUG_LIMIT = 20;
 export const GLOBAL_LIMIT = 2000; // high-water circuit-breaker across all unauthenticated /a/* traffic
-export const LOGIN_WINDOW_SEC = 300;
 
 /** Bucket key (spec §9): known-manifest slugs get their own bucket; well-formed-but-unknown slugs
  *  collapse into ONE fixed key. The manifest lookup is unconditional for every well-formed slug and
@@ -44,16 +43,5 @@ export async function badShapeLimitOk(db: D1Database): Promise<boolean> {
     return bad <= PER_SLUG_LIMIT && global <= GLOBAL_LIMIT;
   } catch {
     return true; // fail open
-  }
-}
-
-/** Login throttle: an escalating DELAY (ms), NEVER a hard deny — a single admin means a hard lockout
- *  is a self-DoS (spec §8). A correct password+TOTP always succeeds, just slower under attack. */
-export async function loginThrottleMs(db: D1Database): Promise<number> {
-  try {
-    const n = await bumpRateLimit(db, "login", LOGIN_WINDOW_SEC);
-    return Math.min(Math.max(0, n - 3) * 500, 5000);
-  } catch {
-    return 0; // fail open
   }
 }

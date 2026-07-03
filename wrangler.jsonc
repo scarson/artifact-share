@@ -10,7 +10,16 @@
   "preview_urls": false,
   // Lets generated code import asset HTML as string modules (spec §7 bundled-module mechanism).
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
-  "vars": { "ENVIRONMENT": "development", "PUBLIC_ORIGIN": "http://localhost:8787" },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "PUBLIC_ORIGIN": "http://localhost:8787",
+    // Local-dev placeholders so the Env is populated even when the local admin bypass is off. The
+    // real Access edge only exists on deployed envs; the bypass flag lives ONLY in .dev.vars (never
+    // here — the build lints this committed config to keep it out).
+    "ACCESS_TEAM_DOMAIN": "https://dev.cloudflareaccess.com",
+    "ACCESS_AUD": "dev-local",
+    "ADMIN_EMAIL": "dev@localhost"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,7 +30,7 @@
     }
   ],
   "secrets": {
-    "required": ["ADMIN_PASSWORD_HASH", "ADMIN_TOTP_SECRET", "SESSION_SECRET", "ASSET_COOKIE_SECRET"]
+    "required": ["ASSET_COOKIE_SECRET"]
   },
   "env": {
     "preview": {
@@ -29,7 +38,15 @@
       // Preview is reachable ONLY at its workers.dev hostname, which Task 7.3 puts behind
       // Cloudflare Access. The app-level ENVIRONMENT gate keeps /a/* and /admin inert regardless.
       "workers_dev": true,
-      "vars": { "ENVIRONMENT": "preview", "PUBLIC_ORIGIN": "https://artifact-share-preview.samuel-carson.workers.dev" },
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "PUBLIC_ORIGIN": "https://artifact-share-preview.samuel-carson.workers.dev",
+        // One Access app covers both preview + production destinations. Admin is inert on preview via
+        // the ENVIRONMENT gate regardless, but the Env is still populated for parity.
+        "ACCESS_TEAM_DOMAIN": "https://samuel-carson.cloudflareaccess.com",
+        "ACCESS_AUD": "b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11",
+        "ADMIN_EMAIL": "samuel.carson@gmail.com"
+      },
       "d1_databases": [{
         "binding": "DB", "database_name": "artifact-share-preview",
         "database_id": "<PREVIEW_DB_ID>", "migrations_dir": "migrations"
@@ -46,7 +63,15 @@
       // the separate artifact-share-preview Worker (empty DB, Access-gated) instead.
       "preview_urls": false,
       "routes": [{ "pattern": "share.scarson.io", "custom_domain": true }],
-      "vars": { "ENVIRONMENT": "production", "PUBLIC_ORIGIN": "https://share.scarson.io" },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "PUBLIC_ORIGIN": "https://share.scarson.io",
+        // Cloudflare Access config for admin auth: JWT issuer/JWKS base, the app's AUD tag, and the
+        // single admin email the Worker re-checks the token's email claim against (spec §8).
+        "ACCESS_TEAM_DOMAIN": "https://samuel-carson.cloudflareaccess.com",
+        "ACCESS_AUD": "b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11",
+        "ADMIN_EMAIL": "samuel.carson@gmail.com"
+      },
       "d1_databases": [{
         "binding": "DB", "database_name": "artifact-share-prod",
         "database_id": "<PROD_DB_ID>", "migrations_dir": "migrations"

@@ -40,17 +40,9 @@ export default defineConfig(async () => {
             // behavior (preview-inert) is tested via app.request(path, init, envOverride).
             ENVIRONMENT: "production",
             PUBLIC_ORIGIN: "https://share.test",
-            SESSION_SECRET: "k1:test-session-secret-do-not-use-in-prod-0000000000",
             ASSET_COOKIE_SECRET: "k1:test-asset-secret-do-not-use-in-prod-00000000000",
-            ADMIN_TOTP_SECRET: "JBSWY3DPEHPK3PXP",
-            // REAL argon2id PHC hash (Task 4.1 Step 6) of the literal test password "test-password",
-            // generated via `node scripts/hash-password.mjs test-password` (@noble/hashes argon2id,
-            // pinned params m=19456,t=2,p=1). Login-flow tests verify against this value — see
-            // docs/pitfalls/testing-pitfalls.md.
-            ADMIN_PASSWORD_HASH: "$argon2id$v=19$m=19456,t=2,p=1$TMPKUmUqqMH1LgIT0xGKrw$Q6OBbtpZyIuY3mM6TIlKaf3Hr8P1wpf5NLD6xgz98IE",
-            // Cloudflare Access config for admin-auth tests (cfaccess module). Not wired into any
-            // route yet — this task is purely additive. Deliberately no ACCESS_DEV_BYPASS here:
-            // tests must exercise real Access enforcement, not the local-dev bypass.
+            // Cloudflare Access config for admin-auth tests (cfaccess module). Deliberately no
+            // ACCESS_DEV_BYPASS here: tests must exercise real Access enforcement, not the local-dev bypass.
             ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
             ACCESS_AUD: "test-aud-tag",
             ADMIN_EMAIL: "admin@share.test"

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey } from "../../../scripts/manifest-lib.mjs";
+import { extractTitle, externalOriginHits, validateSlug, firstDuplicate, hasAssetsKey, hasDevBypass } from "../../../scripts/manifest-lib.mjs";
 
 test("extractTitle reads <title>, falls back to slug", () => {
   expect(extractTitle("<title>Hi</title>", "slug00000000000000000a")).toBe("Hi");
@@ -33,4 +33,9 @@ test("hasAssetsKey catches an assets config key in any position, not just line-s
   expect(hasAssetsKey(`"assets" : {}`)).toBe(true);                            // space before colon
   expect(hasAssetsKey(`{ "name": "x", "vars": { "A": "1" } }`)).toBe(false);  // no assets key
   expect(hasAssetsKey(`// this file MUST NEVER gain an "assets" key`)).toBe(false); // invariant comment (no colon)
+});
+
+test("hasDevBypass flags ACCESS_DEV_BYPASS in a committed config, ignores an ordinary var", () => {
+  expect(hasDevBypass(`"vars": { "ACCESS_DEV_BYPASS": "1" }`)).toBe(true);
+  expect(hasDevBypass(`"vars": { "ENVIRONMENT": "production" }`)).toBe(false);
 });

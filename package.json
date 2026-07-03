@@ -8,15 +8,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "new-asset": "node scripts/new-asset.mjs",
-    "build-manifest": "node scripts/build-manifest.mjs",
-    "hash-password": "node scripts/hash-password.mjs",
-    "totp-setup": "node scripts/totp-setup.mjs"
+    "build-manifest": "node scripts/build-manifest.mjs"
   },
   "dependencies": {
-    "@noble/hashes": "^2.2.0",
     "hono": "^4.12.27",
-    "jose": "^6.2.3",
-    "otpauth": "^9.5.1"
+    "jose": "^6.2.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.17.0",

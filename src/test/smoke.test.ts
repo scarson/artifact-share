@@ -9,5 +9,5 @@ test("worker boots and root is a blank 200", async () => {
 
 test("test bindings are wired", () => {
   expect(env.ENVIRONMENT).toBe("production");
-  expect(env.SESSION_SECRET.startsWith("k1:")).toBe(true);
+  expect(env.ASSET_COOKIE_SECRET.startsWith("k1:")).toBe(true);
 });

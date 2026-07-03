@@ -4,10 +4,7 @@ export interface Env {
   ENVIRONMENT: string;
   /** Canonical origin for this environment — CSRF pin + link minting (spec §8). */
   PUBLIC_ORIGIN: string;
-  ADMIN_PASSWORD_HASH: string;
-  ADMIN_TOTP_SECRET: string;
-  /** Key rings: "<kid>:<secret>[,<kid>:<secret>…]", current kid first (spec §10). */
-  SESSION_SECRET: string;
+  /** Key ring for the recipient asset cookie: "<kid>:<secret>[,<kid>:<secret>…]", current kid first (spec §10). */
   ASSET_COOKIE_SECRET: string;
   /** Cloudflare Access team domain, e.g. https://<team>.cloudflareaccess.com — JWT issuer + JWKS base (admin auth). */
   ACCESS_TEAM_DOMAIN: string;
