@@ -1,6 +1,12 @@
 import { env } from "cloudflare:test";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 import app from "../index";
+import { seedFixtureAsset } from "../test/seedAsset";
+
+// FILE-WIDE seeding (runs after the setup-file's per-test D1 reset): the mint provenance check is
+// D1-backed now, so an un-seeded 400-expecting test would pass via the unknown-asset 400 and
+// silently stop testing its real claim.
+beforeEach(() => seedFixtureAsset());
 
 const BASE = "https://share.test";
 const SLUG = "testasset0000000000000";

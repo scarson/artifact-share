@@ -230,6 +230,22 @@ not a regression to investigate.
 
 ---
 
+## 2b. R2 buckets (asset manager, design 2026-07-03)
+
+Account prerequisite: **R2 must be enabled** on the account (dashboard → R2 → enable; accept
+terms). Verified blocked until the owner enabled it on 2026-07-03.
+
+```bash
+npx wrangler r2 bucket create artifact-share-prod
+npx wrangler r2 bucket create artifact-share-preview
+```
+
+Both created 2026-07-03. If wrangler offers to "add it on your behalf?", **DECLINE** — same
+guardrail as `wrangler d1 create`: the bindings already live in the per-env blocks of
+`wrangler.jsonc` (`env.ASSETS`). The buckets must NEVER get public access, an r2.dev URL, or a
+custom domain — all reads go through the Worker binding after the gate checks (spec §7 growth
+path, now adopted).
+
 ## 3. Publishing an asset
 
 1. `npm run new-asset -- "Title"` — scaffolds `assets/<slug>/index.html` with

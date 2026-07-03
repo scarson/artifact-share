@@ -62,13 +62,25 @@ You're resuming the "Artifact Share" Cloudflare Worker (Hono + D1) in ~/Code/art
 Most of what remains needs the OWNER (admin actions behind Google/Access, dashboard, GitHub secrets), so surface those rather than attempting them. Priority queue (see HANDOFF "Remaining work"): (1) owner runs the end-to-end mint→redeem→revoke test on production /admin — the last Task 7.4 substep; (2) owner adds GitHub repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID and confirms Workers Builds is disabled before merging main; (3) merge PR #1; (4) verify ASSET_COOKIE_SECRET is k1:<random>. Respect the operational guardrails in HANDOFF (esp. wrangler d1-create prompt, the k1: prefix, never push main, ACCESS_DEV_BYPASS is local-only). Use subagent-driven development + a gate review for any further code changes.
 ```
 
-## ⚠ Production deploy blocker (discovered 2026-07-03 ~08:15Z, post-PR#3 review)
+## ⚠ Deploy-token scopes needed (owner action) — updated 2026-07-03 ~09:20Z
 
-Every `main` deploy job fails at `wrangler deploy --env production` with auth error 10000 on
-`/zones/<scarson.io>/workers/routes`: the `CLOUDFLARE_API_TOKEN` repo secret lacks **Zone →
-Workers Routes → Edit** on the `scarson.io` zone (needed for the `share.scarson.io` custom-domain
-route). Preview deploys (dev) are green. Production is still running the last MANUAL deploy —
-the admin-CSRF fix, dark panel, and copy button are NOT live on production yet.
+Every `main` AND `dev` deploy job fails at `wrangler deploy` because the CI `CLOUDFLARE_API_TOKEN`
+repo secret is under-scoped. As Phases A–C landed, the Worker gained bindings the token can't
+touch. The token needs, in addition to its current Workers Scripts:Edit + D1:Edit:
 
-**Owner fix (2 min):** dashboard → My Profile → API Tokens → edit the CI token → add Zone →
-Workers Routes → Edit (zone: scarson.io) → save; then `gh run rerun <latest-main-run-id> --failed`.
+1. **Zone → Workers Routes → Edit** on the `scarson.io` zone — for the `share.scarson.io`
+   custom-domain route (production). Error: `Authentication error [code: 10000]` on
+   `/zones/<scarson.io>/workers/routes`.
+2. **Account → Workers R2 Storage → Edit** — deploy validates the `ASSETS` R2 binding against
+   the bucket. Error: `Authentication error [code: 10000]` on `/accounts/<id>/r2/buckets/…`.
+   (Both buckets already exist; this is a token-scope gap, not a missing bucket.)
+
+**Owner fix (~2 min):** dash → My Profile → API Tokens → edit the CI token → add both permissions
+above → save. Then `gh run rerun <latest-failed-run-id> --failed` (or the next push re-runs it).
+Until then, preview + production deploys red on the deploy step; the `test` job is green, so code
+correctness is validated. Production still serves the last MANUAL deploy (pre-Phase-A).
+
+**After the token is fixed and main deploys green:** publish `/about` — upload
+`docs/assets-src/about/index.html` via `share.scarson.io/admin` (title "How this site works"),
+toggle Public, set alias `about`. And re-set `ASSET_COOKIE_SECRET`/`CODE_VAULT_KEY` are already
+in place (Phase A). Run the end-to-end mint→redeem→revoke check.

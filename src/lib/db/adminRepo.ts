@@ -6,7 +6,11 @@ import { encryptCode } from "../vault";
 export type ExpirySpec = { days: number } | { atSec: number } | null;
 
 export async function listCodes(db: D1Database): Promise<CodeRow[]> {
-  const { results } = await db.prepare("SELECT * FROM codes ORDER BY created_at DESC").all<CodeRow>();
+  // LEFT JOIN: asset_title === null flags an orphaned code (its asset was deleted) — the panel
+  // renders the warning from this, replacing the retired manifest-based orphan check.
+  const { results } = await db.prepare(
+    "SELECT codes.*, assets.title AS asset_title FROM codes LEFT JOIN assets ON assets.slug = codes.asset_slug ORDER BY codes.created_at DESC",
+  ).all<CodeRow>();
   return results;
 }
 

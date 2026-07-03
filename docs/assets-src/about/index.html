@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How this site works</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: oklch(98.5% .004 27); --surface: oklch(96.5% .005 27); --ink: oklch(24% .012 27);
+    --muted: oklch(44% .015 27); --line: oklch(89% .008 27); --faint: oklch(52% .012 27);
+    --seal: oklch(50% .185 27); --seal-ink: oklch(46% .18 27); --ok: oklch(52% .13 150);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: oklch(16% .009 27); --surface: oklch(20.5% .011 27); --ink: oklch(92.5% .006 27);
+      --muted: oklch(71% .012 27); --line: oklch(29% .012 27); --faint: oklch(60% .01 27);
+      --seal: oklch(62% .17 27); --seal-ink: oklch(72% .15 27); --ok: oklch(72% .13 150);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: clamp(2.5rem, 8vw, 6rem) 1.5rem 6rem; }
+  .seal {
+    width: 2.25rem; height: 2.25rem; border-radius: 50%; background: var(--seal);
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 1.05rem;
+    box-shadow: 0 0 0 6px oklch(from var(--seal) l c h / .12); margin-bottom: 1.75rem;
+  }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.05; letter-spacing: -.03em; margin: 0 0 .75rem; text-wrap: balance; }
+  .lede { font-size: 1.2rem; color: var(--muted); margin: 0 0 1rem; text-wrap: pretty; }
+  h2 { font-size: 1.5rem; letter-spacing: -.02em; margin: 3.5rem 0 1rem; text-wrap: balance; }
+  h3 { font-size: 1rem; margin: 2rem 0 .5rem; }
+  p { margin: 0 0 1rem; color: var(--ink); }
+  .muted { color: var(--muted); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em;
+    background: var(--surface); padding: .1em .4em; border-radius: .35em; border: 1px solid var(--line); }
+  strong { font-weight: 650; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 3.5rem 0; }
+  a { color: var(--seal-ink); }
+
+  /* redemption flow — a real sequence, numbered because order carries meaning */
+  .flow { list-style: none; margin: 1.5rem 0; padding: 0; display: grid; gap: 1px; background: var(--line);
+    border: 1px solid var(--line); border-radius: .9rem; overflow: hidden; }
+  .flow li { background: var(--bg); padding: 1.1rem 1.25rem; display: grid; grid-template-columns: 2rem 1fr; gap: 1rem; align-items: baseline; }
+  .flow .n { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--seal); font-size: 1.05rem; }
+  .flow b { font-weight: 600; }
+  .flow .d { color: var(--muted); font-size: .95rem; }
+
+  .stack { display: grid; gap: .75rem; margin: 1.5rem 0; }
+  .layer { border: 1px solid var(--line); border-radius: .7rem; padding: 1rem 1.25rem; background: var(--surface); }
+  .layer b { display: block; margin-bottom: .15rem; }
+  .layer span { color: var(--muted); font-size: .95rem; }
+
+  .callout { border: 1px solid oklch(from var(--seal) l c h / .4); background: oklch(from var(--seal) l c h / .06);
+    border-radius: .8rem; padding: 1.25rem 1.4rem; margin: 2rem 0; }
+  .callout b { color: var(--seal-ink); }
+
+  .doors { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: 1.5rem 0; }
+  .door { border: 1px solid var(--line); border-radius: .7rem; padding: 1rem 1.15rem; }
+  .door .t { font-weight: 600; margin-bottom: .25rem; }
+  .door .r { color: var(--muted); font-size: .92rem; }
+  .same { text-align: center; color: var(--faint); font-size: .9rem; margin: -.25rem 0 0; }
+  @media (max-width: 30rem) { .doors { grid-template-columns: 1fr; } }
+
+  footer { margin-top: 4rem; color: var(--faint); font-size: .9rem; }
+  footer .meta { border: 1px dashed var(--line); border-radius: .7rem; padding: 1rem 1.25rem; }
+  @media (prefers-reduced-motion: no-preference) {
+    .flow li { animation: rise .5s cubic-bezier(.2,.8,.2,1) backwards; }
+    .flow li:nth-child(2) { animation-delay: .06s; }
+    .flow li:nth-child(3) { animation-delay: .12s; }
+    .flow li:nth-child(4) { animation-delay: .18s; }
+    .flow li:nth-child(5) { animation-delay: .24s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="seal" aria-hidden="true">✦</div>
+  <h1>How this site works</h1>
+  <p class="lede">A private courier for confidential web documents — you get a link, the link opens the thing, and the moment it shouldn't, it won't.</p>
+  <p class="muted">This page is itself one of those documents, published without a code so anyone can read it. Everything below describes the machinery you just walked through to get here.</p>
+
+  <h2>The one idea</h2>
+  <p>Someone shares a self-contained HTML document — a report, a dashboard, a deck — with a specific person. Not the whole world, not a login wall, just a link that works for them and can be switched off at any second. That's the entire product. The interesting part is doing it without the usual machinery of accounts, passwords, and sessions.</p>
+
+  <h2>What happens when you open a share link</h2>
+  <p>A link looks like <code>/a/&lt;slug&gt;?code=…</code>. The <code>slug</code> names an opaque document; the <code>code</code> is a 128-bit secret minted for one recipient. Opening it runs this, in order:</p>
+  <ol class="flow">
+    <li><span class="n">1</span><div><b>Check the shape.</b> <span class="d">The slug is validated before touching any database — a malformed one is rejected instantly, giving nothing away.</span></div></li>
+    <li><span class="n">2</span><div><b>Redeem the code, atomically.</b> <span class="d">A single database statement hashes the code, confirms it's valid, unexpired, and unrevoked, and stamps the redemption — all at once, so there's no gap to race.</span></div></li>
+    <li><span class="n">3</span><div><b>Hand back a signed cookie.</b> <span class="d">Success mints a short-lived, signed, HttpOnly cookie scoped to this one document, then redirects to a clean URL with the code stripped out of the address bar.</span></div></li>
+    <li><span class="n">4</span><div><b>Re-check on every single load.</b> <span class="d">The cookie is a convenience, never an authority. Every later request re-asks the database "is this code still good?" — so revoking a code cuts access on the very next click.</span></div></li>
+    <li><span class="n">5</span><div><b>Stream the document from private storage.</b> <span class="d">Only now does the actual content leave the building, straight from a private bucket that has no public address of its own.</span></div></li>
+  </ol>
+
+  <div class="callout">
+    <p style="margin:0"><b>The revocation trick.</b> Because authority lives in the database and is re-checked on every request — not baked into a token that's valid until it expires — "turn off this link" is instant and total. No session to wait out, no cache to bust.</p>
+  </div>
+
+  <h2>Every wrong turn looks identical</h2>
+  <p>An unknown document, a wrong code, an expired code, a revoked code, a link opened in the wrong place — all of them return the <em>exact same</em> page, byte for byte, with the same headers. There's no "that code is expired" versus "no such document" to probe. From the outside, a locked door and a door that was never there are indistinguishable.</p>
+  <div class="doors">
+    <div class="door"><div class="t">Valid, live link</div><div class="r">The document.</div></div>
+    <div class="door"><div class="t">Anything else</div><div class="r">One generic page.</div></div>
+  </div>
+  <p class="same">— and the "anything else" page is the same bytes every time —</p>
+
+  <h2>What it's built from</h2>
+  <p>The whole thing is one small program running at the edge, close to whoever's reading. It leans on three managed pieces and owns almost no infrastructure:</p>
+  <div class="stack">
+    <div class="layer"><b>One edge worker</b><span>Routes requests, checks codes, sets cookies, streams documents. No servers to keep alive.</span></div>
+    <div class="layer"><b>A small database</b><span>The single source of truth for codes, expiries, and revocations — and the single source of <em>time</em>, so no clock can be gamed.</span></div>
+    <div class="layer"><b>A private object store</b><span>Holds the document bytes. Reachable only through the worker, only after the checks above. It has no public URL.</span></div>
+  </div>
+
+  <h3>Publishing is not deploying</h3>
+  <p>Documents are uploaded through the admin panel at runtime — a single file or a whole zipped bundle — and versioned, rolled back, or deleted on the spot. They never live in the source code. That's deliberate: the code that runs this site is public, and none of the confidential content is anywhere near it.</p>
+
+  <h3>The admin door is a different door</h3>
+  <p>Minting and revoking codes happens behind a corporate single-sign-on gate, and the worker independently re-verifies that identity on its own — it never just trusts the doorman. Recipients never see any of this; they only ever meet a document or the generic page.</p>
+
+  <h2>Public by choice</h2>
+  <p>Most documents need a code. A few — like this one — are flipped to <strong>public</strong>: same storage, same worker, same fail-closed plumbing, minus the code check. Flip it back and the gate returns instantly, exactly like a revocation. A public document can also claim a friendly name, which is why this page lives at <code>/about</code> instead of a random slug.</p>
+
+  <hr>
+  <footer>
+    <div class="meta">
+      You reached this page with no code — it's a public asset, uploaded through the same panel and served by the same worker as every private one. The difference is one toggle. <span class="muted">Everything else on this site is behind a link meant only for you.</span>
+    </div>
+  </footer>
+</main>
+</body>
+</html>

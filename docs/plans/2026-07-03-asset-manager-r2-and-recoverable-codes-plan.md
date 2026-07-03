@@ -55,13 +55,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** Phase A shipped (PR #4); B/C in progress; plan review converged round 8 (0 findings).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Recoverable codes vault | 🚧 In progress | — | A1–A5 implemented + browser-verified; PR #4 open (review in flight); A6 pending prod deploy |
-| B — R2 asset manager | ⬜ Not started | — | tasks B1–B9 sequential |
-| C — Public assets + /about (owner-requested 2026-07-03) | ⬜ Not started | — | after B; C1–C4 sequential |
+| A — Recoverable codes vault | ✅ Shipped | `0ec72be` (PR #4) | A6 live-verify deferred pending prod-deploy token fix |
+| B — R2 asset manager | ✅ Implemented | (branch) | PR pending; 150 tests green |
+| C — Public assets + /about (owner-requested 2026-07-03) | ✅ Implemented | (branch) | /about publish deferred to prod deploy |
 
 ### Standing context for every task (read once, applies throughout)
 
@@ -102,7 +102,7 @@ DELETED in B8: src/lib/manifest.ts, src/lib/assets.ts, .generated/, assets/,
 
 ## Phase A — Recoverable codes vault
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-03 08:28Z (branch `claude/eager-almeida-95f4ee`, landing on `dev`). A1–A5 implemented + browser-verified (Show link recovers the exact minted URL) as of 08:50Z; group review + PR pending; A6 (live verify) pending production deploy.
+**Execution Status:** ✅ SHIPPED on 2026-07-03 (PR #4 merged at `0ec72be`). A1–A5 browser-verified + 3-round adversarial gate (blind security review: SHIP; 3 LOW hardening findings applied at `99599c3` — duplicate-kid throw, decrypt-failure attribution, onError header uniformity). ⏸ A6 (production live verify) DEFERRED pending the production deploy, which is blocked on the CI token gaining Zone → Workers Routes → Edit on scarson.io — see docs/HANDOFF.md "Production deploy blocker"; verify per Task A6 once a main deploy goes green.
 
 Ships alone. The `CODE_VAULT_KEY` secret is **already set on both live Workers** (owner session
 2026-07-03, `k1:`-prefixed, independent random keys per env) — executors only wire config/code.
@@ -444,7 +444,7 @@ command there and retry. Record the outcome in this plan.
 
 ## Phase B — R2 asset manager
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ IMPLEMENTED 2026-07-03 (B1–B9 on branch `claude/eager-almeida-95f4ee`, landing on `dev`; PR pending). 150 tests green, tsc clean, browser-verified (real zip bundle serves with relative subresources). Deviation: caps lowered for isolate memory (B4); B7 and C2 built together (gate needs the public short-circuit).
 
 **Owner-action gate: ✅ CLEARED 2026-07-03 08:24Z.** R2 was account-disabled (API 10042, verified
 08:09Z); the owner enabled it in the dashboard, and both buckets now exist (`artifact-share-prod`
@@ -1296,7 +1296,7 @@ console.log("config lints OK");
 
 ## Phase C — Public assets + /about (owner-requested 2026-07-03)
 
-**Execution Status:** ⬜ NOT STARTED
+**Execution Status:** ✅ IMPLEMENTED 2026-07-03 (C1–C3 done; C4 README done via stop-slop). Browser-verified: uploaded a bundle, toggled public, alias `demo`+`about`, /about renders under ASSET_CSP. ⏸ Production publish of /about DEFERRED pending prod deploy (owner uploads via /admin, or CLI once the deploy-token Zone-Workers-Routes fix lands — see HANDOFF).
 
 Runs strictly AFTER Phase B (it extends the asset manager). Design: design doc §Part C. The two
 schema columns (`is_public`, `public_alias`) ship inside Phase B's migration 0004 (B1) since that

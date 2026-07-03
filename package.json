@@ -4,13 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "npm run build-manifest && wrangler deploy",
+    "deploy": "npm run lint-config && wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "new-asset": "node scripts/new-asset.mjs",
-    "build-manifest": "node scripts/build-manifest.mjs"
+    "lint-config": "node scripts/lint-config.mjs"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "hono": "^4.12.27",
     "jose": "^6.2.3"
   },

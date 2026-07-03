@@ -78,6 +78,13 @@ the COMMITTED `.generated/slugs.json`; the build REJECTS any asset folder whose 
 the registry, not the shape regex, is the D2 backstop. The external-origin scan is an advisory
 lint; CSP is the containment boundary (§9).
 
+**AMENDED 2026-07-03 (owner-approved, supersedes this entry):** the build-time module manifest is
+RETIRED. Asset metadata now lives in D1 (`assets`/`asset_versions`) and bytes in a private R2
+bucket (binding-only); publishing is a runtime admin upload, not a deploy. What is UNCHANGED and
+still binds: the wrangler.jsonc `assets`-key ban (no platform static surface) and the
+no-external-origin discipline for asset HTML. See
+`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md` §3.
+
 ## Bootstrap hash must be byte-compatible with the runtime verifier (spec §8)
 `scripts/hash-password.mjs` (Node) and the Worker verifier BOTH use `@noble/hashes` argon2id
 (pure JS) with the same pinned params (m=19456,t=2,p=1,dkLen=32,version=0x13) and standard PHC
@@ -130,6 +137,14 @@ Accepted for trusted admin authoring, but §15 Q2 promotes sandboxed-iframe rend
 recommended reconsideration — direct top-frame render is a conscious owner decision.
 
 ---
+
+**ASSET_CSP allows `'unsafe-inline'` scripts/styles — intentional (threat-model note).** Uploaded
+documents are trusted first-party content authored by the admin, and self-contained HTML routinely
+inlines its own `<style>`/`<script>`. `ASSET_CSP` therefore permits inline on the ASSET response
+class ONLY. This does NOT weaken the site's own surfaces: the root/failure/admin pages use the
+strict hash-pinned `ADMIN_CSP` (no `unsafe-inline`), and an asset runs isolated on its opaque slug
+origin path. A public asset is the same trust as a gated one — the admin uploaded both. If assets
+ever accept third-party-authored content, revisit this (sandboxed-iframe rendering, §15 Q2).
 
 ## Orchestration
 

@@ -6,6 +6,9 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Key ring for the recipient asset cookie: "<kid>:<secret>[,<kid>:<secret>…]", current kid first (spec §10). */
   ASSET_COOKIE_SECRET: string;
+  /** Private R2 bucket: asset bytes under a/<slug>/<version>/…, originals under orig/.
+   *  Binding-only access (no public bucket URL, ever — design 2026-07-03 §3). */
+  ASSETS: R2Bucket;
   /** Key ring for the code vault (recoverable codes, design 2026-07-03): "kid:<standard base64 of
    *  32 bytes>[,…]", first key encrypts. Secret per env; already set on both live Workers. */
   CODE_VAULT_KEY: string;
