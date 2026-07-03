@@ -6,6 +6,9 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Key ring for the recipient asset cookie: "<kid>:<secret>[,<kid>:<secret>…]", current kid first (spec §10). */
   ASSET_COOKIE_SECRET: string;
+  /** Key ring for the code vault (recoverable codes, design 2026-07-03): "kid:<standard base64 of
+   *  32 bytes>[,…]", first key encrypts. Secret per env; already set on both live Workers. */
+  CODE_VAULT_KEY: string;
   /** Cloudflare Access team domain, e.g. https://<team>.cloudflareaccess.com — JWT issuer + JWKS base (admin auth). */
   ACCESS_TEAM_DOMAIN: string;
   /** The Access application's Audience (AUD) tag — pinned as the JWT audience (admin auth). */
