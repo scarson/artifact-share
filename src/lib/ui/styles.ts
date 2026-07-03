@@ -56,7 +56,10 @@ body{display:grid;place-items:center;padding:1.5rem;text-align:center}
 main{max-width:26rem}
 main .seal{margin-bottom:1.25rem}
 h1{font-size:1.0625rem;font-weight:600;letter-spacing:.01em;margin:0 0 .625rem;text-wrap:balance}
-p{margin:0;color:var(--muted);font-size:.9375rem;text-wrap:pretty}`;
+p{margin:0;color:var(--muted);font-size:.9375rem;text-wrap:pretty}
+p.foot{margin-top:1.25rem;font-size:.875rem}
+a{color:var(--seal-text);text-underline-offset:2px}
+a:focus-visible{outline:2px solid var(--seal);outline-offset:2px;border-radius:2px}`;
 
 /** Admin panel. */
 export const ADMIN_STYLE = `${ADMIN_TOKENS}
