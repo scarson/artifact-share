@@ -38,3 +38,10 @@ test("codes.code_enc exists, TEXT, nullable (migration 0003)", async () => {
   expect(enc!.type).toBe("TEXT");
   expect(enc!.notnull).toBe(0); // pre-vault rows stay NULL = "not recoverable"
 });
+
+test("assets + asset_versions exist with expected columns (migration 0004)", async () => {
+  const acols = (await env.DB.prepare("PRAGMA table_info(assets)").all<{ name: string }>()).results.map((c) => c.name);
+  expect(acols).toEqual(expect.arrayContaining(["slug", "title", "active_version", "is_public", "public_alias", "created_at", "updated_at"]));
+  const vcols = (await env.DB.prepare("PRAGMA table_info(asset_versions)").all<{ name: string }>()).results.map((c) => c.name);
+  expect(vcols).toEqual(expect.arrayContaining(["slug", "version", "created_at", "file_count", "total_bytes"]));
+});
