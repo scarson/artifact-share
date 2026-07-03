@@ -15,6 +15,17 @@ test("storeVersion + readAssetFile round-trip with content types; version isolat
   expect(await readAssetFile(env.ASSETS, SLUG, 1, "missing.css")).toBeNull();
 });
 
+test("storeVersion writes a CLEAN slate — a reused version number cannot inherit stale objects", async () => {
+  await storeVersion(env.ASSETS, SLUG, 7, [
+    { path: "index.html", bytes: F("a"), contentType: "text/html; charset=utf-8" },
+    { path: "old.css", bytes: F("stale"), contentType: "text/css" },
+  ], null);
+  // Re-store version 7 with FEWER files (as a post-delete reuse would): old.css must not survive.
+  await storeVersion(env.ASSETS, SLUG, 7, [{ path: "index.html", bytes: F("b"), contentType: "text/html; charset=utf-8" }], null);
+  expect(await (await readAssetFile(env.ASSETS, SLUG, 7, "index.html"))!.text()).toBe("b");
+  expect(await readAssetFile(env.ASSETS, SLUG, 7, "old.css")).toBeNull();
+});
+
 test("original zip stored under orig/ and readable; absent for single-file versions", async () => {
   await storeVersion(env.ASSETS, SLUG, 3, [{ path: "index.html", bytes: F("x"), contentType: "text/html; charset=utf-8" }], F("ZIPBYTES"));
   expect(await (await readOriginalZip(env.ASSETS, SLUG, 3))!.text()).toBe("ZIPBYTES");

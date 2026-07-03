@@ -18,6 +18,10 @@ async function sha256hex(bytes: Uint8Array): Promise<string> {
 }
 
 export async function storeVersion(bucket: R2Bucket, slug: string, version: number, files: UploadFile[], originalZip: Uint8Array | null): Promise<void> {
+  // Clean slate first: version numbers can be reused after a delete (nextVersion is MAX+1), and a
+  // prior partial-delete could have left stale objects at this prefix. Clearing guarantees the new
+  // version is exactly `files`, never a mix.
+  await deletePrefix(bucket, filePrefix(slug, version));
   for (const f of files) {
     await bucket.put(filePrefix(slug, version) + f.path, f.bytes, {
       httpMetadata: { contentType: f.contentType },

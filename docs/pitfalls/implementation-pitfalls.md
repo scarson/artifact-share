@@ -138,6 +138,14 @@ recommended reconsideration — direct top-frame render is a conscious owner dec
 
 ---
 
+**ASSET_CSP allows `'unsafe-inline'` scripts/styles — intentional (threat-model note).** Uploaded
+documents are trusted first-party content authored by the admin, and self-contained HTML routinely
+inlines its own `<style>`/`<script>`. `ASSET_CSP` therefore permits inline on the ASSET response
+class ONLY. This does NOT weaken the site's own surfaces: the root/failure/admin pages use the
+strict hash-pinned `ADMIN_CSP` (no `unsafe-inline`), and an asset runs isolated on its opaque slug
+origin path. A public asset is the same trust as a gated one — the admin uploaded both. If assets
+ever accept third-party-authored content, revisit this (sandboxed-iframe rendering, §15 Q2).
+
 ## Orchestration
 
 This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section does NOT restate those rules — it exists to make sure plan writers notice they apply.
