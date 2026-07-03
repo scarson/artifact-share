@@ -45,3 +45,11 @@ test("assets + asset_versions exist with expected columns (migration 0004)", asy
   const vcols = (await env.DB.prepare("PRAGMA table_info(asset_versions)").all<{ name: string }>()).results.map((c) => c.name);
   expect(vcols).toEqual(expect.arrayContaining(["slug", "version", "created_at", "file_count", "total_bytes"]));
 });
+
+test("asset_versions.entry exists, TEXT, nullable (migration 0005)", async () => {
+  const cols = (await env.DB.prepare("PRAGMA table_info(asset_versions)").all<{ name: string; type: string; notnull: number }>()).results;
+  const entry = cols.find((c) => c.name === "entry");
+  expect(entry).toBeDefined();
+  expect(entry!.type).toBe("TEXT");
+  expect(entry!.notnull).toBe(0); // legacy rows NULL ⇒ treated as index.html
+});
