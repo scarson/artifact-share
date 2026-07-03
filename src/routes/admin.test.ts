@@ -60,10 +60,24 @@ test("admin responses carry the FULL security-header set (spec §9 — authorize
   ]) {
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("pragma")).toBe("no-cache");
-    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000");
     expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   }
+});
+
+// REGRESSION (live bug, 2026-07-03): the panel MUST NOT be served under Referrer-Policy: no-referrer.
+// Per the Fetch spec, a document whose referrer policy is "no-referrer" makes the browser serialize
+// the Origin header of its same-origin form POSTs as the literal "null" (and omit Referer entirely),
+// so originOk() 403'd every legitimate Generate/Revoke submit in a real browser. "same-origin"
+// restores the real Origin/Referer on same-origin requests while still sending nothing cross-origin.
+test("the AUTHORIZED panel is served with Referrer-Policy: same-origin (no-referrer breaks its own form POSTs)", async () => {
+  const panel = await app.request("/admin", {}, { ...env, ACCESS_DEV_BYPASS: "1" });
+  expect(panel.headers.get("referrer-policy")).toBe("same-origin");
+});
+
+test("DENIED admin responses keep the global no-referrer — header-identical to a gate failure", async () => {
+  const denied = await app.request("/admin", {}, env);
+  expect(denied.headers.get("referrer-policy")).toBe("no-referrer");
 });
