@@ -4,11 +4,14 @@ This is the authoritative operations doc for the Artifact Share Worker: a
 single-admin, gated-asset-sharing app on Cloudflare (Hono + D1). It covers
 branches, first-time provisioning, publishing, environments, the CI
 precondition, Cloudflare Access decisions, zone-level foot-guns, log hygiene,
-backups, secret rotation, TOTP recovery, integrity alerting, and D1 read
-replication.
+backups, secret rotation, admin access recovery, integrity alerting, and D1
+read replication.
 
 Authoritative design reference: [`docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md`](../design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md)
 ("spec §N" below). Implementation plan: [`docs/plans/2026-07-02-gated-asset-sharing-site-cloudflare-plan.md`](../plans/2026-07-02-gated-asset-sharing-site-cloudflare-plan.md).
+
+**Admin auth: Cloudflare Access + Google SSO** (changed 2026-07-03 from
+password+TOTP — see spec §8 / §15 Q6).
 
 **Deployment topology:**
 
@@ -45,8 +48,8 @@ Authoritative design reference: [`docs/design/2026-07-02-gated-asset-sharing-sit
 ## 2. OPERATOR HAND-OFF — first-time production/preview provisioning
 
 **This section is for the account owner only.** These steps touch the live
-Cloudflare account (creates real D1 databases, sets the real admin
-password/TOTP secret, and deploys to production) and cannot be run
+Cloudflare account (creates real D1 databases, sets the real
+`ASSET_COOKIE_SECRET` key ring, and deploys to production) and cannot be run
 autonomously. Run them in order, top to bottom, from a machine with
 `npx wrangler login` already authenticated against the target account.
 
@@ -103,78 +106,96 @@ and fix `wrangler.jsonc` before deploying.
 
 ### Step 2.3 — Set the secrets (distinct per environment)
 
-**This is the step that needs the real admin password and a real
-authenticator app.** Never reuse the test password (`test-password`) or any
-value used in tests/fixtures for production.
+**Admin auth = Cloudflare Access (already configured).** Admin identity is no
+longer a Worker-managed secret — it is enforced by a Cloudflare Access
+application (Google SSO) sitting in front of `/admin`, with the Worker
+independently re-checking the resulting identity JWT. The
+`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, and `ADMIN_EMAIL` values this depends on
+are **non-secret config vars**, already committed in `wrangler.jsonc`'s
+`vars` blocks for both `env.production` and `env.preview`. There is nothing
+to `wrangler secret put` for admin auth — see the "Cloudflare Access (admin
+identity)" subsection below for what's already set up and how to verify it.
 
-Hash the real admin password and store it:
-
-```bash
-node scripts/hash-password.mjs '<the real admin password>'
-```
-
-This prints a `$argon2id$v=19$m=19456,t=2,p=1$…` PHC-format hash to stdout.
-Copy the entire printed hash string (nothing else) as the value for:
-
-```bash
-npx wrangler secret put ADMIN_PASSWORD_HASH --env production
-```
-
-Mint the TOTP secret and enroll it in an authenticator app **immediately**:
-
-```bash
-node scripts/totp-setup.mjs
-```
-
-This prints a base32 secret and an `otpauth://` URI. Scan the otpauth URI (or
-its QR encoding, if your terminal/tool renders one) into your authenticator
-app **now, before closing the terminal** — the printed secret and the
-authenticator enrollment must come from the same run, or they will never
-agree on codes. Then store the base32 secret:
-
-```bash
-npx wrangler secret put ADMIN_TOTP_SECRET --env production
-```
-
-Generate the two key-ring secrets:
+**The only remaining Worker secret is `ASSET_COOKIE_SECRET`** — the key ring
+that signs the recipient-gate cookie. Generate a random value:
 
 ```bash
 openssl rand -base64 32
-openssl rand -base64 32
 ```
 
-Run this twice to get two **different** random values — one for the session
-ring, one for the asset-cookie ring. `openssl rand -base64` never emits a
-comma, which matters: the key-ring parser splits ring entries on commas, so a
-secret containing a comma would silently corrupt the ring. Also note that the
-parser does not enforce a minimum secret length — a too-short, hand-typed
-string is accepted without error, so always use the `openssl` output
-verbatim rather than typing a secret by hand.
+`openssl rand -base64` never emits a comma, which matters: the key-ring
+parser splits ring entries on commas, so a secret containing a comma would
+silently corrupt the ring. Also note that the parser does not enforce a
+minimum secret length — a too-short, hand-typed string is accepted without
+error, so always use the `openssl` output verbatim rather than typing a
+secret by hand.
 
-Each ring value is stored with a key-id prefix, `k1:<secret>`:
+Store it with a key-id prefix, `k1:<secret>`:
 
 ```bash
-npx wrangler secret put SESSION_SECRET --env production
-# value: k1:<first openssl output>
 npx wrangler secret put ASSET_COOKIE_SECRET --env production
+# value: k1:<openssl output>
+```
+
+Repeat for `--env preview`, using a **different** random value from
+production (preview never mints anything that grants access to real content,
+since preview's D1 starts empty and stays behind Cloudflare Access, but the
+two rings should still never share a value):
+
+```bash
+openssl rand -base64 32
+npx wrangler secret put ASSET_COOKIE_SECRET --env preview
 # value: k1:<second, different openssl output>
 ```
 
-Repeat all four `secret put` commands for `--env preview`, using **different**
-values from production (a throwaway password and a throwaway TOTP secret are
-fine for preview — preview never mints anything that grants access to real
-content, since preview's D1 starts empty and stays behind Cloudflare Access):
+### Cloudflare Access (admin identity)
+
+Admin identity for `/admin` is enforced by a Cloudflare Access application,
+not by a Worker-managed password. This is already configured in the
+dashboard; this subsection is the operator's reference for what's there and
+how to verify it, not a step to (re-)run.
+
+- **Access application scope: `/admin` only**, on both production
+  (`share.scarson.io/admin`) and preview
+  (`artifact-share-preview.samuel-carson.workers.dev/admin`). The
+  application is scoped to the `/admin` path — **never the whole
+  hostname** — because `/a/*` (the recipient gate) must stay outside Access;
+  an Access wall in front of `/a/*` would break the one-click,
+  no-login recipient flow the gate design depends on.
+- **Identity provider: Google.** The Allow policy is
+  `Include: Login Method = Google`, `Require: Emails = samuel.carson@gmail.com`.
+- **Team domain:** `https://samuel-carson.cloudflareaccess.com`. The
+  application's AUD tag is wired into `wrangler.jsonc` as `ACCESS_AUD` (a
+  non-secret var, not a secret — see Step 2.3 above).
+- **The Worker independently verifies the Access JWT** on every `/admin`
+  request (`Cf-Access-Jwt-Assertion` header) against `ACCESS_TEAM_DOMAIN` /
+  `ACCESS_AUD`, and re-checks the resulting identity's email against
+  `ADMIN_EMAIL`. A request that reaches the Worker directly without a valid
+  assertion (e.g. bypassing the edge somehow) is denied at the app level too
+  — Access is not a single point of trust the Worker blindly defers to.
+- **Local dev has no Access edge.** `wrangler dev` never sits behind
+  Cloudflare Access, so local admin QA relies on `ACCESS_DEV_BYPASS=1` set in
+  `.dev.vars` (git-ignored) only — the build lints this var out of any
+  committed config, so it can never land in a deployed environment.
+
+Verify after deploy:
 
 ```bash
-node scripts/hash-password.mjs '<a throwaway preview password>'
-npx wrangler secret put ADMIN_PASSWORD_HASH --env preview
-node scripts/totp-setup.mjs
-npx wrangler secret put ADMIN_TOTP_SECRET --env preview
-openssl rand -base64 32
-npx wrangler secret put SESSION_SECRET --env preview
-openssl rand -base64 32
-npx wrangler secret put ASSET_COOKIE_SECRET --env preview
+curl -sS -o /dev/null -w "%{http_code}\n" https://share.scarson.io/admin
 ```
+
+Expected: `302`, redirecting to a `cloudflareaccess.com` login page.
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" \
+  https://share.scarson.io/a/testasset0000000000000
+```
+
+Expected: **not** a redirect to Access — the recipient flow at `/a/*` must
+stay reachable without any Access login (it will 404/generic-fail on this
+placeholder slug, which is fine; the point is it isn't gated by Access).
+After signing in at the `/admin` redirect with the Google account
+`samuel.carson@gmail.com`, `/admin` should load the panel normally.
 
 ### Step 2.4 — Deploy
 
@@ -184,11 +205,10 @@ npx wrangler deploy --env preview
 npx wrangler deploy --env production
 ```
 
-A deploy with any of the four required secrets missing in the target
-environment fails loudly — `wrangler.jsonc`'s `secrets.required` declaration
-lists `ADMIN_PASSWORD_HASH`, `ADMIN_TOTP_SECRET`, `SESSION_SECRET`,
+A deploy with the required secret missing in the target environment fails
+loudly — `wrangler.jsonc`'s `secrets.required` declaration lists only
 `ASSET_COOKIE_SECRET`, and Wrangler refuses to deploy an environment that is
-missing any of them.
+missing it.
 
 **Note:** deploying `--env production` intentionally disables the
 currently-enabled `*-artifact-share.samuel-carson.workers.dev` version-preview
@@ -322,9 +342,13 @@ branch protection on this repo accordingly.
 ## 6. Cloudflare Access decisions (spec §15)
 
 Four related owner decisions on using Cloudflare Access/Turnstile/WAF as
-additional perimeter layers. The app-level password+TOTP gate (spec §8) is
-always the actual authorization boundary; everything in this section is
-optional defense-in-depth on top of it.
+perimeter layers. Admin identity (`/admin`, both environments) is enforced
+by Cloudflare Access + Google SSO plus the Worker's own JWT re-check (§2
+above, "Cloudflare Access (admin identity)") — that is now the actual
+admin-authorization boundary, not optional defense-in-depth. Q7 and Q8 below
+remain genuinely optional defense-in-depth layers on top of it; Q3 documents
+Access applied more broadly, to the entire preview hostname rather than just
+`/admin`.
 
 ### Q3 — Access on non-production hostnames: **enabled**
 
@@ -351,17 +375,14 @@ above) remains the fail-closed boundary underneath regardless of Access
 being enabled, misconfigured, or bypassed — preview's `/a/*` and `/admin/*`
 are inert at the app level no matter what reaches the Worker.
 
-### Q6 — Access in front of production `/admin`: off by default
+### Q6 — Access in front of production `/admin`: **RESOLVED — enabled**
 
-Not enabled by default. Password+TOTP is the boundary for `/admin`. To add
-Access as an **additional** layer later (never as a replacement):
-
-Create a self-hosted Access application for `share.scarson.io/admin`,
-restricted to allow only the owner's email — same one-click pattern as Q3,
-applied to the production custom domain instead of the preview `workers.dev`
-hostname. If enabled, the app still requires its own password+TOTP login
-behind the Access wall; do not remove or weaken the app-level auth to
-compensate.
+**RESOLVED:** Cloudflare Access + Google SSO now **replaces** the old
+password+TOTP gate as the admin-authorization boundary (the owner's Google
+account is protected by Google Advanced Protection). This is no longer an
+optional defense-in-depth layer to consider adding later — it is the
+mechanism. See §2 above ("Cloudflare Access (admin identity)") for the
+application scope, IdP/policy configuration, and verification steps.
 
 ### Q7 — Turnstile: off
 
@@ -458,44 +479,48 @@ if any of these are ever proposed:
 
 ## 10. Rotation & exposure (spec §10)
 
-- **Key-ring rotation** (`SESSION_SECRET`, `ASSET_COOKIE_SECRET`): prepend a
-  new `k<n>:<secret>` entry to the ring (e.g. `k2:<new-secret>,k1:<old-secret>`)
+- **Key-ring rotation** (`ASSET_COOKIE_SECRET`): prepend a new
+  `k<n>:<secret>` entry to the ring (e.g. `k2:<new-secret>,k1:<old-secret>`)
   so the Worker signs new tokens with the new key while still accepting
   tokens signed with the previous key. Keep the previous entry in the ring
-  until all outstanding tokens signed with it have aged out — sessions live
-  at most 7 days, asset cookies at most 24 hours — then drop the retired
-  entry from the ring in a follow-up `secret put`.
+  until all outstanding tokens signed with it have aged out — asset cookies
+  live at most 24 hours — then drop the retired entry from the ring in a
+  follow-up `secret put`.
 - **Suspected access-code exposure is never handled by secret rotation.**
-  Rotating `SESSION_SECRET`/`ASSET_COOKIE_SECRET` does nothing to a leaked
-  access code — the code itself is the credential. The correct response to
-  a suspected code exposure is to **revoke the code and reissue a new one
-  in `/admin`**, immediately invalidating the leaked value via the D1
-  fail-closed recheck on every load.
+  Rotating `ASSET_COOKIE_SECRET` does nothing to a leaked access code — the
+  code itself is the credential. The correct response to a suspected code
+  exposure is to **revoke the code and reissue a new one in `/admin`**,
+  immediately invalidating the leaked value via the D1 fail-closed recheck
+  on every load.
 
 ---
 
-## 11. TOTP / authenticator recovery (spec §8)
+## 11. Admin access recovery (spec §8)
 
-If the admin loses access to their authenticator (lost device, uninstalled
-app, etc.), recovery is: mint a brand-new TOTP secret and re-enroll, not
-attempt to recover the old one.
+There is no Worker-managed credential to reset. Admin identity is Cloudflare
+Access + Google SSO, so recovery follows from those two systems instead of a
+`wrangler secret put`:
 
-```bash
-npm run totp-setup
-```
-
-This mints a **new** secret together with its matching `otpauth://` URI in
-one run — the two must come from the same invocation, since the secret and
-the QR/URI are only valid as a pair. Set the new secret:
-
-```bash
-npx wrangler secret put ADMIN_TOTP_SECRET --env production
-```
-
-Then scan the URI/QR from that same run into the authenticator app. A
-hand-invented secret typed in without going through the script (and its
-matching QR) will not produce codes the Worker accepts — the secret must be
-the exact value the authenticator was enrolled with.
+- **Lost access to the Google account** (forgotten password, lost 2FA
+  device, etc.): recovery goes through **Google's own account-recovery
+  flow** for `samuel.carson@gmail.com`. Because that account is enrolled in
+  **Google Advanced Protection**, expect Google's stricter recovery path
+  (it deliberately resists fast self-service recovery — that's the point of
+  Advanced Protection). There is nothing in this repo or the Cloudflare
+  dashboard that can substitute for that flow.
+- **Break-glass / Access misconfiguration** (e.g. the Allow policy is wrong
+  and locks the owner out of `/admin`, or the Access application itself
+  needs to be disabled temporarily): this is dashboard control of the
+  Access application, not a Worker secret — **Dashboard → Zero Trust →
+  Access → Applications → (the `/admin` application) → edit the policy, or
+  disable the application.** Disabling the application removes the Access
+  edge check entirely; the Worker's own JWT verification then denies all
+  `/admin` requests (no assertion header present), so disabling Access does
+  **not** reopen `/admin` — it fails closed. Re-enable the application (or
+  fix the policy) to restore admin access.
+- **Local dev is unaffected** by any of the above — `wrangler dev` never
+  sits behind Access, and local admin QA continues to work via
+  `ACCESS_DEV_BYPASS=1` in `.dev.vars`.
 
 ---
 
@@ -539,16 +564,18 @@ performance choice to revisit later.
 
 ---
 
-## Appendix: KDF implementation note
+## Appendix: KDF implementation note (historical — password auth removed)
 
-Spec §8 originally named `hash-wasm` for argon2id. In practice, `hash-wasm`
-compiles WebAssembly at runtime (`WebAssembly.compile(bytes)`), and workerd
-forbids runtime Wasm code generation — it throws in both tests and
-production. The shipped implementation uses **`@noble/hashes` argon2id**
-instead, a pure-JavaScript implementation that runs on Workers. Both
-`scripts/hash-password.mjs` (used in Step 2.3 above) and the Worker's own
-password verifier (`src/lib/auth/password.ts`) use the same `@noble/hashes`
-implementation at the same parameters (`m=19456, t=2, p=1`, 32-byte output,
-PHC-format `$argon2id$…` string), so a hash printed by the script is
-guaranteed to verify correctly in the deployed Worker — there is no
-cross-library compatibility gap to worry about.
+This note is retained for history; admin auth no longer uses a
+password/KDF at all (see the banner at the top of this doc — admin auth is
+now Cloudflare Access + Google SSO). Spec §8 originally named `hash-wasm`
+for argon2id, back when admin auth was password-based. In practice,
+`hash-wasm` compiles WebAssembly at runtime (`WebAssembly.compile(bytes)`),
+and workerd forbids runtime Wasm code generation — it throws in both tests
+and production. The now-removed password implementation used
+**`@noble/hashes` argon2id** instead, a pure-JavaScript implementation that
+runs on Workers, at parameters `m=19456, t=2, p=1`, 32-byte output,
+PHC-format `$argon2id$…` string. The password-hashing helper script and its
+corresponding Worker secret described in earlier revisions of this doc have
+both been removed along with the rest of the password/TOTP admin-auth
+machinery.
