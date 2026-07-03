@@ -102,7 +102,7 @@ DELETED in B8: src/lib/manifest.ts, src/lib/assets.ts, .generated/, assets/,
 
 ## Phase A — Recoverable codes vault
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-03 08:28Z (branch `claude/eager-almeida-95f4ee`, landing on `dev`)
+**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-03 08:28Z (branch `claude/eager-almeida-95f4ee`, landing on `dev`). A1–A5 implemented + browser-verified (Show link recovers the exact minted URL) as of 08:50Z; group review + PR pending; A6 (live verify) pending production deploy.
 
 Ships alone. The `CODE_VAULT_KEY` secret is **already set on both live Workers** (owner session
 2026-07-03, `k1:`-prefixed, independent random keys per env) — executors only wire config/code.
