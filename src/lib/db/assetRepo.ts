@@ -61,6 +61,43 @@ export async function deleteVersion(db: D1Database, slug: string, version: numbe
   await db.prepare("DELETE FROM asset_versions WHERE slug = ?1 AND version = ?2").bind(slug, version).run();
 }
 
+// ── Public assets + aliases (design 2026-07-03 §Part C) ──────────────────────────────────────
+export const ALIAS_RE = /^[a-z0-9-]{1,32}$/;
+// "a"/"admin" collide with app routes; robots/favicon are well-known; cdn-cgi is Cloudflare-reserved.
+export const RESERVED_ALIASES = new Set(["a", "admin", "robots.txt", "favicon.ico", "cdn-cgi"]);
+
+export async function setPublic(db: D1Database, slug: string, isPublic: boolean): Promise<void> {
+  await db.prepare("UPDATE assets SET is_public = ?2, updated_at = unixepoch() WHERE slug = ?1")
+    .bind(slug, isPublic ? 1 : 0).run();
+}
+
+export async function setAlias(db: D1Database, slug: string, alias: string | null): Promise<void> {
+  if (alias !== null) {
+    if (!ALIAS_RE.test(alias) || RESERVED_ALIASES.has(alias)) throw new Error("invalid or reserved alias");
+    try {
+      await db.prepare("UPDATE assets SET public_alias = ?2, updated_at = unixepoch() WHERE slug = ?1").bind(slug, alias).run();
+    } catch (e) {
+      if (e instanceof Error && /UNIQUE/i.test(e.message)) throw new Error("alias already taken");
+      throw e;
+    }
+    return;
+  }
+  await db.prepare("UPDATE assets SET public_alias = NULL, updated_at = unixepoch() WHERE slug = ?1").bind(slug).run();
+}
+
+/** Public + published only — the single oracle both public serve paths use (fail closed on null). */
+export async function publicAssetBySlug(db: D1Database, slug: string): Promise<{ active_version: number } | null> {
+  return await db.prepare(
+    "SELECT active_version FROM assets WHERE slug = ?1 AND is_public = 1 AND active_version IS NOT NULL",
+  ).bind(slug).first<{ active_version: number }>();
+}
+
+export async function publicAssetByAlias(db: D1Database, alias: string): Promise<{ slug: string; active_version: number } | null> {
+  return await db.prepare(
+    "SELECT slug, active_version FROM assets WHERE public_alias = ?1 AND is_public = 1 AND active_version IS NOT NULL",
+  ).bind(alias).first<{ slug: string; active_version: number }>();
+}
+
 /** Delete = kill access: revoke every code for the slug, drop version rows, drop the asset. */
 export async function deleteAsset(db: D1Database, slug: string): Promise<void> {
   await db.batch([

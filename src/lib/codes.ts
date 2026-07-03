@@ -14,6 +14,12 @@ function token128(): string {
 export const generateCode = token128;
 export const generateSlug = token128;
 
+const SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
+/** Opaque 22-char base64url slug shape — checked before ANY DB/R2 access (spec §6 step 5). */
+export function isValidSlug(slug: string): boolean {
+  return SLUG_RE.test(slug);
+}
+
 /** SHA-256(code) hex. Only the HASH is ever stored/looked-up — never the raw code (spec §3 D3, §5). */
 export async function hashCode(code: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));

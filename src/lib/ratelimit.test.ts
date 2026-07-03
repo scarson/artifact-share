@@ -2,11 +2,19 @@ import { env } from "cloudflare:test";
 import { expect, test } from "vitest";
 import { bumpRateLimit } from "./db/rateStore";
 import { gateLimitOk, slugKey, PER_SLUG_LIMIT } from "./ratelimit";
+import { createAsset } from "./db/assetRepo";
 
 test("slugKey: known slugs get their own bucket; unknown collapse into ONE fixed bucket", () => {
-  expect(slugKey("redeem", "known000000000000000aA", () => true)).toBe("redeem:known000000000000000aA");
-  expect(slugKey("redeem", "randaaaaaaaaaaaaaaaaaa", () => false)).toBe("redeem:unknown-slug");
-  expect(slugKey("redeem", "randbbbbbbbbbbbbbbbbbb", () => false)).toBe("redeem:unknown-slug");
+  expect(slugKey("redeem", "known000000000000000aA", true)).toBe("redeem:known000000000000000aA");
+  expect(slugKey("redeem", "randaaaaaaaaaaaaaaaaaa", false)).toBe("redeem:unknown-slug");
+  expect(slugKey("redeem", "randbbbbbbbbbbbbbbbbbb", false)).toBe("redeem:unknown-slug");
+});
+
+test("gateLimitOk keys a REAL (D1-existing) slug to its own bucket", async () => {
+  const slug = await createAsset(env.DB, "limited");
+  await gateLimitOk(env.DB, "redeem", slug);
+  const row = await env.DB.prepare("SELECT count(*) AS n FROM rate_limits WHERE key = ?1").bind(`redeem:${slug}`).first<{ n: number }>();
+  expect(row!.n).toBe(1); // proves per-slug keying post-rewire (not the unknown-slug bucket)
 });
 
 test("bumpRateLimit increments atomically within a window", async () => {
