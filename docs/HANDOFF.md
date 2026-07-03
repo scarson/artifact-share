@@ -9,6 +9,18 @@ zips download by default with an on-demand Unpack to a browsable bundle). Live-v
 root link, /about (legacy NULL-entry row serves — back-compat OK), and a single-file PDF served
 inline then cleaned up. 164 tests green. PRs #4/#5/#6 merged after blind adversarial review.
 
+## Auditing & alerting (Phase E, shipped 2026-07-04, PR #7)
+
+- **Admin-action audit log** — `audit_log` table (migration 0006) records every admin mutation;
+  read-only **Activity** panel section shows the trail. Stores only ids/slugs/summaries, never a
+  raw code or URL (test-pinned). Populates as you use the panel (0 rows until first action).
+- **Integrity alert** now has a delivery path: the `asset_object_missing` event goes to
+  `console.error` PLUS an optional webhook. **To enable the webhook** (recommended — works with
+  observability off): `echo -n "https://hooks.slack.com/…" | npx wrangler secret put
+  ALERT_WEBHOOK_URL --env production`. Unset = console channel only.
+- Observability posture is deliberate (SETUP §8/§12): Workers Logs/Logpush capture request URLs
+  which contain the code, so keep platform observability OFF/minimal and rely on the webhook.
+
 Nothing is blocked. The one remaining nicety: run the owner-only end-to-end mint→redeem→revoke
 check on production /admin (needs a Google login) if you want that last manual confirmation.
 
