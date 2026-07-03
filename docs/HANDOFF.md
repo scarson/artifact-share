@@ -61,3 +61,14 @@ You're resuming the "Artifact Share" Cloudflare Worker (Hono + D1) in ~/Code/art
 
 Most of what remains needs the OWNER (admin actions behind Google/Access, dashboard, GitHub secrets), so surface those rather than attempting them. Priority queue (see HANDOFF "Remaining work"): (1) owner runs the end-to-end mint→redeem→revoke test on production /admin — the last Task 7.4 substep; (2) owner adds GitHub repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID and confirms Workers Builds is disabled before merging main; (3) merge PR #1; (4) verify ASSET_COOKIE_SECRET is k1:<random>. Respect the operational guardrails in HANDOFF (esp. wrangler d1-create prompt, the k1: prefix, never push main, ACCESS_DEV_BYPASS is local-only). Use subagent-driven development + a gate review for any further code changes.
 ```
+
+## ⚠ Production deploy blocker (discovered 2026-07-03 ~08:15Z, post-PR#3 review)
+
+Every `main` deploy job fails at `wrangler deploy --env production` with auth error 10000 on
+`/zones/<scarson.io>/workers/routes`: the `CLOUDFLARE_API_TOKEN` repo secret lacks **Zone →
+Workers Routes → Edit** on the `scarson.io` zone (needed for the `share.scarson.io` custom-domain
+route). Preview deploys (dev) are green. Production is still running the last MANUAL deploy —
+the admin-CSRF fix, dark panel, and copy button are NOT live on production yet.
+
+**Owner fix (2 min):** dashboard → My Profile → API Tokens → edit the CI token → add Zone →
+Workers Routes → Edit (zone: scarson.io) → save; then `gh run rerun <latest-main-run-id> --failed`.
