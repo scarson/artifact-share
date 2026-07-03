@@ -72,7 +72,7 @@ and Cloudflare deploys the Worker. Access codes are managed at runtime through a
   so codes can be expired/revoked individually.
 - **Recipient access:** shareable link with the code embedded (`/a/<slug>?code=XXX`), one click,
   no typing.
-- **Admin auth:** master password **plus** TOTP 2FA.
+- **Admin auth:** ~~master password **plus** TOTP 2FA~~ → **Cloudflare Access + Google SSO** (owner-ratified 2026-07-03; owner is in Google Advanced Protection). See §8 banner and §15 Q6.
 - **Expiration:** optional to set; default **90 days** if unset; overridable per code
   (absolute date or duration); **instant revoke** always available.
 - **Reuse:** codes are reusable until they expire or are revoked.
@@ -395,6 +395,23 @@ rationale (caps a stolen-cookie window; per-load recheck already gives instant r
 
 ## 8. Admin authentication & panel
 
+> **UPDATE (2026-07-03, owner-ratified — supersedes the password+TOTP mechanism below):** admin
+> authentication is now **Cloudflare Access + Google SSO** (§15 Q6, flipped from "additional layer"
+> to "replace"). The owner is enrolled in Google Advanced Protection (hardware-key, phishing-resistant
+> MFA), which makes an app-maintained password+TOTP redundant. Cloudflare Access authenticates at the
+> edge — an Access application scoped to **`/admin` only, never `/a/*`** — and the Worker
+> INDEPENDENTLY verifies the `Cf-Access-Jwt-Assertion` JWT (RS256 signature via the team JWKS at
+> `${TEAM_DOMAIN}/cdn-cgi/access/certs`, pinned issuer + audience) and confirms the `email` claim is
+> the configured admin, so a request reaching the Worker *bypassing* Access is still denied. Local
+> `wrangler dev` (no Access edge) uses an `ACCESS_DEV_BYPASS=1` flag confined to the gitignored
+> `.dev.vars` and **linted out of any committed/deployed config** (the build fails on its presence in
+> `wrangler.jsonc`). Carried over unchanged: the production-only `ENVIRONMENT` gate, pinned-origin
+> CSRF on POST mutations, show-once codes, orphan flagging, and the panel. The subsections below
+> (argon2id/`hash-wasm` KDF, TOTP replay, key-ring session, login throttle) are retained as historical
+> rationale but are **no longer implemented** — the code, the `@node-rs/argon2`/WASM discussion, the
+> `ADMIN_PASSWORD_HASH`/`ADMIN_TOTP_SECRET`/`SESSION_SECRET` secrets, and the `@noble/hashes`/`otpauth`
+> dependencies have been removed.
+
 - **`/admin/login`:** master password + 6-digit TOTP. Unchanged flow.
 - **Password — the Workers KDF decision (confronted, not assumed):** the Workers runtime has
   WebCrypto but **no Node native addons**, so `@node-rs/argon2` cannot run. **Chosen: argon2id
@@ -445,11 +462,15 @@ rationale (caps a stolen-cookie window; per-load recheck already gives instant r
   and status only, never a code value**; generate code (asset, label, optional expiry → 90-day DB
   default); **raw code / full link shown exactly once at generation** (API-key style); revoke;
   lost link ⇒ revoke + reissue; **flag orphaned codes** whose `asset_slug` left the manifest.
-- **Optional additional layer — Cloudflare Access in front of `/admin/*` (production):** a free
-  Zero-Trust SSO wall (email OTP or IdP) *in front of* the app's own password+TOTP. It is
-  defense-in-depth only — the app-level auth remains the design's boundary and MUST NOT be removed
-  in its favor (Access outages/misconfig would otherwise be a single point, and invariant 10's
-  replay/throttle semantics live in the app). Offered as §15 Q6 with a lean-yes recommendation.
+- **Admin identity — Cloudflare Access + Google SSO (production), IMPLEMENTED 2026-07-03:** the
+  Zero-Trust SSO wall is now the admin identity mechanism (not merely a layer) — see the §8 banner
+  and §15 Q6. Access authenticates at the edge; the Worker independently verifies the
+  `Cf-Access-Jwt-Assertion` JWT (team-JWKS signature, pinned issuer + audience) and re-checks the
+  admin email, so the Worker still enforces its own authorization boundary. Access outage/misconfig
+  is an accepted single point for **admin login only** (never recipients); break-glass is dashboard
+  control of the Access app. *(Historical: this was originally offered as defense-in-depth in front
+  of the app's own password+TOTP; the owner's Google Advanced Protection membership made the separate
+  app-maintained factor redundant, so it replaced rather than layered.)*
 
 ## 9. Security headers & crawler defense
 
@@ -743,10 +764,18 @@ recommendation; the design as written above stands until the owner rules.
    build emits a bundle-size report. *Recommendation: bundle now; pre-commit to the R2 mechanism
    (private bucket, Worker-binding reads, fail-closed + integrity alert) and cut over when total
    compressed assets pass ~70% of headroom or when sidecar assets arrive (§14).*
-6. **Cloudflare Access in front of production `/admin/*` — NEW option.** Free additional SSO wall;
-   defense-in-depth on the code-minting surface; never a replacement for app-level password+TOTP
-   (§8). Cost: Cloudflare account/IdP becomes an availability+trust dependency for admin logins
-   (not for recipients). *Recommendation: yes, as an additional layer.*
+6. **Cloudflare Access in front of production `/admin/*` — RESOLVED (owner, 2026-07-03): REPLACE
+   password+TOTP.** Originally offered as an *additional* SSO wall; flipped to the sole admin identity
+   mechanism because the owner is in **Google Advanced Protection** (hardware-key, phishing-resistant
+   MFA), making an app-maintained password+TOTP redundant. Cloudflare Access + Google authenticates at
+   the edge; the Worker still **independently verifies** the Access JWT (issuer/audience/RS256
+   signature via the team JWKS) and re-checks the admin email, so the app enforces its own
+   authorization boundary rather than blindly trusting the edge — that verification is what makes
+   "replace" safe rather than a downgrade. Accepted tradeoff: Cloudflare Access + Google become an
+   availability dependency for **admin login only** (never for recipients); break-glass is dashboard
+   control of the Access app. The Access application is scoped to `/admin`; the `/a/*` recipient flow
+   stays outside Access. Implemented 2026-07-03 (see §8 banner); the former password/TOTP/session
+   code, secrets, and deps were removed.
 7. **Turnstile — NEW option, narrow.** On `/admin/login` only, as pre-KDF bot damping. **Never on
    `/a/*`** — a JS challenge breaks the one-click, no-JS recipient flow (and link-scanner behavior
    becomes unpredictable). The login throttle (§8) already suffices; Turnstile is optional polish.
