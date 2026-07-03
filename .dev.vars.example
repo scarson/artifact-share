@@ -8,3 +8,5 @@ ASSET_COOKIE_SECRET=k1:local-asset-secret-not-for-prod-0000000000000
 # check for local admin QA. MUST stay ONLY in .dev.vars — NEVER put it in wrangler.jsonc or a
 # deployed env. The build lints wrangler.jsonc to enforce that.
 ACCESS_DEV_BYPASS=1
+# Code vault (recoverable codes): standard base64 of 32 bytes. Local-only placeholder.
+CODE_VAULT_KEY=k1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=

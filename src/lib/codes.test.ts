@@ -23,7 +23,7 @@ test("hashCode is deterministic 64-hex SHA-256 and differs per code", async () =
 });
 
 const base: CodeRow = {
-  id: "x", code_hash: "h", asset_slug: "s", label: "",
+  id: "x", code_hash: "h", code_enc: null, asset_slug: "s", label: "",
   created_at: 1_760_000_000, expires_at: 1_770_000_000,
   revoked_at: null, last_used_at: null, use_count: 0,
 };

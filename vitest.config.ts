@@ -41,6 +41,8 @@ export default defineConfig(async () => {
             ENVIRONMENT: "production",
             PUBLIC_ORIGIN: "https://share.test",
             ASSET_COOKIE_SECRET: "k1:test-asset-secret-do-not-use-in-prod-00000000000",
+            // Vault ring (recoverable codes): STANDARD base64 of exactly 32 bytes (here: zeros).
+            CODE_VAULT_KEY: "k1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             // Cloudflare Access config for admin-auth tests (cfaccess module). ACCESS_DEV_BYPASS is
             // pinned OFF ("0" — only the exact string "1" enables it) because the pool also loads
             // .dev.vars, where SETUP.md tells developers to set ACCESS_DEV_BYPASS=1 for local QA;

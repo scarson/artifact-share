@@ -50,7 +50,8 @@
 			"workers_dev": true,
 			"secrets": {
 				"required": [
-					"ASSET_COOKIE_SECRET"
+					"ASSET_COOKIE_SECRET",
+					"CODE_VAULT_KEY"
 				]
 			},
 			"vars": {
@@ -83,7 +84,8 @@
 			"preview_urls": false,
 			"secrets": {
 				"required": [
-					"ASSET_COOKIE_SECRET"
+					"ASSET_COOKIE_SECRET",
+					"CODE_VAULT_KEY"
 				]
 			},
 			"routes": [
