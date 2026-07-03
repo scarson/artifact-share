@@ -59,7 +59,7 @@ notes and commit messages.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Recoverable codes vault | ⬜ Not started | — | independent; ships alone |
+| A — Recoverable codes vault | 🚧 In progress | — | A1–A5 implemented + browser-verified; PR #4 open (review in flight); A6 pending prod deploy |
 | B — R2 asset manager | ⬜ Not started | — | tasks B1–B9 sequential |
 | C — Public assets + /about (owner-requested 2026-07-03) | ⬜ Not started | — | after B; C1–C4 sequential |
 
@@ -357,7 +357,7 @@ export async function getCodeEnc(
 - Modify: `src/routes/admin.ts` (panelPage notice generalization + new POST route), `src/lib/ui/styles.ts` if any style tweak (then update hashes per csp.test), `docs/pitfalls/implementation-pitfalls.md` (amend superseded entry), spec `docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md` §3 D3/§8 (amendment note)
 - Test: `src/routes/adminPanel.test.ts` (append)
 
-**Context:** `panelPage(opts, …)` currently renders `opts.oneTimeLink` under the fixed heading "Copy this link now — it will NOT be shown again:". Generalize to `opts.link?: { url: string; heading: string }` so mint and show share the copy-row UI (existing tests grep the mint heading and the `?code=` regex — keep the mint heading text EXACTLY).
+**Context:** `panelPage(opts, …)` currently renders `opts.oneTimeLink` under the fixed heading "Copy this link now — it will NOT be shown again:". Generalize to `opts.link?: { url: string; heading: string }` so mint and show share the copy-row UI (existing tests assert only the `?code=` regex — no test pins the mint heading, but keep its text EXACTLY anyway; it is user-facing show-once messaging).
 
 - [ ] **Step 1: Failing tests** (append to `src/routes/adminPanel.test.ts`):
 
@@ -498,7 +498,7 @@ CREATE TABLE asset_versions (
 ### Task B2: R2 bindings + `fflate`
 
 **Files:**
-- Modify: `wrangler.jsonc` (three `r2_buckets` blocks), `src/env.ts` (`ASSETS: R2Bucket;`), `package.json` (fflate dep), `docs/deploy/SETUP.md` (bucket runbook §2.2)
+- Modify: `wrangler.jsonc` (three `r2_buckets` blocks), `src/env.ts` (`ASSETS: R2Bucket;`), `package.json` (fflate dep), `docs/deploy/SETUP.md` (NEW bucket-runbook section — see Step 4)
 
 - [ ] **Step 1:** `wrangler.jsonc` — top-level (local dev; miniflare simulates, name is arbitrary-but-stable):
 
@@ -655,7 +655,7 @@ export async function deleteAsset(db: D1Database, slug: string): Promise<void> {
 ```ts
 import { describe, expect, test } from "vitest";
 import { strToU8, zipSync } from "fflate";
-import { UploadError, validateUpload } from "./validate";
+import { UploadError, validateUpload, type UploadLimits } from "./validate";
 
 const html = strToU8("<!doctype html><h1>hi</h1>");
 const zip = (files: Record<string, Uint8Array>) => zipSync(files);
@@ -1113,8 +1113,19 @@ async function mintAndRedeem(): Promise<{ cookie: string }> {
   const raw = await createCode(env.DB, SLUG, "sub", null, env.CODE_VAULT_KEY);
   const r = await app.request(`/a/${SLUG}?code=${raw}`, { redirect: "manual" }, env);
   expect(r.status).toBe(302); // sanity: redemption must succeed before any subresource assertion
+  expect(r.headers.get("location")).toBe(`/a/${SLUG}/`); // trailing slash — relative refs resolve in-bundle
   return { cookie: r.headers.get("set-cookie")!.split(";")[0] };
 }
+
+test("document serves at /a/<slug>/ (trailing slash); bare /a/<slug> with a valid cookie 302s there", async () => {
+  const link = await mintAndRedeem();
+  const doc = await app.request(`/a/${SLUG}/`, { headers: { cookie: link.cookie } }, env);
+  expect(doc.status).toBe(200);
+  expect(await doc.text()).toContain("fixture ok");
+  const bare = await app.request(`/a/${SLUG}`, { headers: { cookie: link.cookie }, redirect: "manual" }, env);
+  expect(bare.status).toBe(302);
+  expect(bare.headers.get("location")).toBe(`/a/${SLUG}/`);
+});
 
 test("bundle subresources served under a valid cookie; content-type from R2; revocation kills them instantly", async () => {
   await env.ASSETS.put(`a/${SLUG}/1/css/app.css`, "body{color:red}", { httpMetadata: { contentType: "text/css" } });
@@ -1200,7 +1211,10 @@ per-slug limiter test's slug has no assets row, so post-rewire it exercises only
 and assert the D1 `rate_limits` key is literally `redeem:<slug>` (and update its stale "not in
 manifest" comment).
 
-Clean-load branch: same `activeVersion` + `readAssetFile(env.ASSETS, slug, v, "index.html")`; on hit set `ASSET_CSP` + the object's content type and `return c.body(obj.body)`; on MISS (valid cookie, active version set, object gone) log the SAME `asset_object_missing` structured error and return `failurePage()` — the §13 integrity alert covers both branches, exactly as the module check does today. New route AFTER the existing one:
+Clean-load branch (bare `/a/:slug`, valid cookie + recheck OK): do NOT serve a body — `return
+c.redirect(`/a/${slug}/`, 302)` (trailing-slash canonicalization above; the document serves from
+the wildcard route). The bare handler therefore no longer touches R2 on clean loads at all — the
+integrity alert moves entirely into the wildcard handler below. New route AFTER the existing one:
 
 ```ts
 gate.get("/a/:slug/*", async (c) => {
@@ -1220,8 +1234,16 @@ gate.get("/a/:slug/*", async (c) => {
   } catch {
     return failurePage(); // malformed %-encoding is the generic page, never a 500
   }
+  if (path === "") path = "index.html"; // `/a/<slug>/` IS the document URL (trailing-slash canon.)
   const obj = await readAssetFile(c.env.ASSETS, slug, v, path).catch(() => null); // store re-guards traversal
-  if (!obj) return failurePage(); // missing subresource: silent generic page (parity)
+  if (!obj) {
+    if (path === "index.html") {
+      // Valid auth + active version but the document object is gone from R2 = integrity failure
+      // (spec §13): loud structured alert, same generic page to the client.
+      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version: v, codeId: claims.codeId }));
+    }
+    return failurePage(); // any other missing path: silent generic page (parity)
+  }
   if (obj.httpMetadata?.contentType?.startsWith("text/html")) c.header("content-security-policy", ASSET_CSP);
   c.header("content-type", obj.httpMetadata?.contentType ?? "application/octet-stream");
   return c.body(obj.body);
@@ -1259,7 +1281,7 @@ console.log("config lints OK");
 ### Task B9: Docs, spec amendments, live verification
 
 **Files:**
-- Modify: spec §7/§13 (amendment banners pointing at the design doc), `docs/pitfalls/implementation-pitfalls.md` ("Confidential manifest is a generated MODULE" → AMENDED banner: manifest is now D1+R2; the `assets`-key ban and no-static-surface invariants unchanged), `docs/deploy/SETUP.md` (publish runbook §, bucket creation §2.2 finalized), `docs/HANDOFF.md` if still referenced
+- Modify: spec §7/§13 (amendment banners pointing at the design doc), `docs/pitfalls/implementation-pitfalls.md` ("Confidential manifest is a generated MODULE" → AMENDED banner: manifest is now D1+R2; the `assets`-key ban and no-static-surface invariants unchanged), `docs/deploy/SETUP.md` (publish runbook §; finalize the NEW bucket section added in B2), `docs/HANDOFF.md` if still referenced
 - No code.
 
 - [ ] **Step 1:** Write the amendments (each a short banner: what changed, date, link to design doc — do NOT rewrite history sections). This includes the pitfalls entry "NEVER add an `assets` key…", whose enforcement pointer currently names `scripts/build-manifest.mjs` — repoint it at `scripts/lint-config.mjs` (the invariant itself is unchanged).
@@ -1424,15 +1446,18 @@ async function seedPublic(alias?: string) {
   if (alias) await setAlias(env.DB, FIXTURE_SLUG, alias);
 }
 
-test("public asset serves at /a/<slug> with NO code and NO cookie; toggling off restores the gate instantly", async () => {
+test("public asset: bare /a/<slug> 302s to /a/<slug>/ which serves with NO code and NO cookie; toggling off restores the gate instantly", async () => {
   await seedPublic();
-  const res = await app.request(`/a/${FIXTURE_SLUG}`, {}, env);
+  const bare = await app.request(`/a/${FIXTURE_SLUG}`, { redirect: "manual" }, env);
+  expect(bare.status).toBe(302);
+  expect(bare.headers.get("location")).toBe(`/a/${FIXTURE_SLUG}/`);
+  const res = await app.request(`/a/${FIXTURE_SLUG}/`, {}, env);
   expect(res.status).toBe(200);
   expect(await res.text()).toContain("fixture ok");
   expect(res.headers.get("set-cookie")).toBeNull();               // public path issues nothing
   expect(res.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'"); // ASSET_CSP specifically — the middleware default (ADMIN_CSP) has no unsafe-inline, so this cannot pass on the wrong header
   await setPublic(env.DB, FIXTURE_SLUG, false);
-  expect(await (await app.request(`/a/${FIXTURE_SLUG}`, {}, env)).text()).toContain("invalid or has expired");
+  expect(await (await app.request(`/a/${FIXTURE_SLUG}/`, {}, env)).text()).toContain("invalid or has expired");
 });
 test("public bundle subresources serve without a cookie", async () => {
   await seedPublic();
@@ -1459,10 +1484,11 @@ test("unknown alias, non-public alias, malformed alias → byte-identical generi
     expect(await (await app.request(path, {}, env)).text()).toBe(canonicalBody);
   }
 });
-test("?code= on a public asset serves publicly (no cookie minted, code not consumed)", async () => {
+test("?code= on a public asset canonicalize-redirects (no cookie minted, code not consumed)", async () => {
   await seedPublic();
   const res = await app.request(`/a/${FIXTURE_SLUG}?code=whatever`, { redirect: "manual" }, env);
-  expect(res.status).toBe(200);                                   // served directly, not a 302 redeem
+  expect(res.status).toBe(302);                                   // public short-circuit wins over redeem
+  expect(res.headers.get("location")).toBe(`/a/${FIXTURE_SLUG}/`); // strips ?code=
   expect(res.headers.get("set-cookie")).toBeNull();
   const n = await env.DB.prepare("SELECT count(*) AS n FROM codes WHERE use_count > 0").first<{ n: number }>();
   expect(n!.n).toBe(0);
@@ -1539,12 +1565,17 @@ publicAlias.get("/:alias", aliasHandler);
 publicAlias.get("/:alias/*", aliasHandler);
 ```
 
-`gate.ts` — in BOTH routes, immediately after the slug-shape check (BEFORE any code/cookie
-logic — public wins over a present `?code=`):
+`gate.ts` — public short-circuits per the Final handler order below (public wins over a present
+`?code=`); note the two routes DIFFER:
 
 ```ts
+  // bare /a/:slug — canonicalize, don't serve a body (RFC 3986 relative resolution):
   const pub = await publicAssetBySlug(c.env.DB, slug).catch(() => null);
-  if (pub) return servePublicFile(c.env, slug, pub.active_version, /* index or decoded subpath */);
+  if (pub) return c.redirect(`/a/${slug}/`, 302);
+
+  // /a/:slug/* — serve (path already decoded; empty tail already mapped to "index.html"):
+  const pub = await publicAssetBySlug(c.env.DB, slug).catch(() => null);
+  if (pub) return servePublicFile(c.env, slug, pub.active_version, path);
 ```
 
 **Final handler order (exact — do not reorder):**
