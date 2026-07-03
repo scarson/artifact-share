@@ -22,7 +22,11 @@ async function importRing(ring: string): Promise<Map<string, CryptoKey>> {
     if (i < 1) throw new Error("CODE_VAULT_KEY: malformed ring entry");
     const raw = Uint8Array.from(atob(part.slice(i + 1)), (c) => c.charCodeAt(0));
     if (raw.length !== 32) throw new Error("CODE_VAULT_KEY: keys must be 32 bytes");
-    out.set(part.slice(0, i), await crypto.subtle.importKey("raw", raw as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]));
+    const kid = part.slice(0, i);
+    // A duplicate kid would silently shadow the earlier key and quietly lose every code minted
+    // under it — the exact silent-loss failure this module refuses to allow.
+    if (out.has(kid)) throw new Error("CODE_VAULT_KEY: duplicate kid in ring");
+    out.set(kid, await crypto.subtle.importKey("raw", raw as BufferSource, "AES-GCM", false, ["encrypt", "decrypt"]));
   }
   if (out.size === 0) throw new Error("CODE_VAULT_KEY: empty ring");
   return out;

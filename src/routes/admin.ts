@@ -178,7 +178,13 @@ admin.post("/admin/show", async (c) => {
   if (!row) return c.html(panelPage({ error: "unknown code", host }, await listCodes(c.env.DB), nowSec), 400);
   const rawCode = await decryptCode(row.code_enc, c.env.CODE_VAULT_KEY);
   if (rawCode === null) {
-    return c.html(panelPage({ error: `"${row.label}" is not recoverable (minted before the vault)`, host }, await listCodes(c.env.DB), nowSec));
+    // Pre-vault rows (no ciphertext) are expected; a PRESENT ciphertext that won't decrypt means
+    // the ring lost a key (rotation mistake, wrong-env secret) — say so, or silent key loss
+    // across the whole vault would masquerade as a calm per-row message.
+    const error = row.code_enc === null
+      ? `"${row.label}" is not recoverable (minted before the vault)`
+      : `"${row.label}" failed to decrypt — check the CODE_VAULT_KEY ring (was a key rotated out?)`;
+    return c.html(panelPage({ error, host }, await listCodes(c.env.DB), nowSec));
   }
   const link = { url: `${c.env.PUBLIC_ORIGIN}/a/${row.asset_slug}?code=${rawCode}`, heading: `Link for ${row.label}:` };
   return c.html(panelPage({ link, host }, await listCodes(c.env.DB), nowSec));

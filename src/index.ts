@@ -13,7 +13,13 @@ const app = new Hono<{ Bindings: Env }>();
 // own CSP (the asset 200) keep it; everything else gets the restrictive default. Uniformity here is
 // what makes failure-vs-failure byte-parity hold by construction.
 app.use("*", async (c, next) => {
-  await next();
+  try {
+    await next();
+  } catch {
+    // Backstop for NON-Error throws only (Hono's compose forwards `instanceof Error` throws to
+    // app.onError below at the throw site; anything else re-throws up to here). Same rationale.
+    c.res = failurePage();
+  }
   for (const [k, v] of Object.entries(baseHeaders())) {
     // referrer-policy is respected-if-set (like CSP below): the authorized admin panel MUST override
     // no-referrer to same-origin, or the browser serializes the Origin header of the panel's own
@@ -48,5 +54,11 @@ app.route("/", admin);
 // Every unknown route returns the SAME generic page (spec §13 deny tests: the manifest URLs land
 // here; no route class is distinguishable from a gate failure).
 app.notFound(() => failurePage());
+
+// Any uncaught route error is ALSO the same generic page — a bare 500 would fingerprint the error
+// class and (because Hono's onError result would otherwise ship as-is) drop the §9 header set.
+// The onError response flows back through the finalizing middleware above, so headers still apply.
+// Never log request data here; the error itself is not logged (it may embed secrets).
+app.onError(() => failurePage());
 
 export default app;

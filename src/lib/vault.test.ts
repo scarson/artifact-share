@@ -30,4 +30,10 @@ describe("code vault", () => {
     await expect(encryptCode("x", "not-a-ring")).rejects.toThrow();
     await expect(encryptCode("x", "k1:" + btoa("short"))).rejects.toThrow(); // key must be 32 bytes
   });
+  test("duplicate kids in the ring throw (silent shadowing would quietly lose pre-rotation codes)", async () => {
+    const dup = `${KEY_A},${KEY_A.replace("7", "7")}`; // same kid twice, any values
+    await expect(encryptCode("x", dup)).rejects.toThrow(/duplicate/i);
+    const enc = await encryptCode("x", KEY_A);
+    expect(await decryptCode(enc, dup)).toBeNull(); // decrypt fails CLOSED on a duplicate-kid ring
+  });
 });

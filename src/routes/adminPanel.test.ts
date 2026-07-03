@@ -131,3 +131,37 @@ test("Show link: unknown id → panel error; cross-site Origin → 403; unauthor
     body: new URLSearchParams({ id: "x" }).toString() }, env);
   expect(await unauth.text()).toContain("invalid or has expired");
 });
+
+test("Show link distinguishes vault-decrypt FAILURE from pre-vault rows (silent key loss must be visible)", async () => {
+  await apost("/admin/codes", { slug: SLUG, label: "keyloss", days: "", date: "" });
+  // Simulate a rotated-out / wrong-env key: ciphertext present but not decryptable by the ring.
+  await env.DB.prepare("UPDATE codes SET code_enc = 'k9:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'").run();
+  const { id } = (await env.DB.prepare("SELECT id FROM codes").first<{ id: string }>())!;
+  const body = await (await apost("/admin/show", { id })).text();
+  expect(body).toContain("CODE_VAULT_KEY");        // names the ring — operator-actionable
+  expect(body).not.toContain("minted before the vault"); // NOT misattributed to pre-vault
+});
+
+test("the panel NEVER renders code_enc ciphertext (design §2: never rendered)", async () => {
+  await apost("/admin/codes", { slug: SLUG, label: "ct", days: "", date: "" });
+  const { code_enc } = (await env.DB.prepare("SELECT code_enc FROM codes").first<{ code_enc: string }>())!;
+  const panel = await (await app.request("/admin", {}, AUTH)).text();
+  expect(panel).not.toContain(code_enc);
+  expect(panel).not.toContain(code_enc.split(":")[2]); // nor the bare ciphertext segment
+});
+
+test("an uncaught route error renders the generic page WITH the full §9 header set (never a bare 500)", async () => {
+  // A malformed vault ring makes encryptCode throw inside POST /admin/codes — the one deliberate
+  // loud-throw path. The finalizing middleware must catch it: same generic page, same headers.
+  const badRing = { ...AUTH, CODE_VAULT_KEY: "garbage-not-a-ring" };
+  const res = await app.request("/admin/codes", {
+    method: "POST",
+    headers: { origin: BASE, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ slug: SLUG, label: "x", days: "", date: "" }).toString(),
+  }, badRing);
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain("invalid or has expired");
+  expect(res.headers.get("cache-control")).toBe("no-store");
+  expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000");
+});
