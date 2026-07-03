@@ -7,7 +7,8 @@ import { servesTraffic } from "../lib/envgate";
 import { originOk } from "../lib/http/csrf";
 import { verifyAccessToken } from "../lib/auth/cfaccess";
 import { findOrphans, isKnownSlug, readManifest } from "../lib/manifest";
-import { createCode, listCodes, revokeCode, type ExpirySpec } from "../lib/db/adminRepo";
+import { createCode, getCodeEnc, listCodes, revokeCode, type ExpirySpec } from "../lib/db/adminRepo";
+import { decryptCode } from "../lib/vault";
 import { codeStatus } from "../lib/codes";
 
 export const admin = new Hono<{ Bindings: Env }>();
@@ -61,7 +62,7 @@ function fmtUtc(sec: number): string {
   return new Date(sec * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }
 
-function panelPage(opts: { oneTimeLink?: string; error?: string; host: string }, codesRows: Awaited<ReturnType<typeof listCodes>>, nowSec: number) {
+function panelPage(opts: { link?: { url: string; heading: string }; error?: string; host: string }, codesRows: Awaited<ReturnType<typeof listCodes>>, nowSec: number) {
   const manifest = readManifest();
   const orphans = new Set(findOrphans(codesRows, manifest));
   // ADMIN_STYLE is inserted with raw() — its bytes must stay EXACTLY the exported constant, or the
@@ -71,8 +72,8 @@ function panelPage(opts: { oneTimeLink?: string; error?: string; host: string },
 <header class="site"><span class="seal" aria-hidden="true"></span><span class="brand">${opts.host}</span><span class="crumb">Admin</span></header>
 <h1>Assets &amp; codes</h1>
 ${opts.error ? html`<p role="alert" class="alert">${opts.error}</p>` : ""}
-${opts.oneTimeLink
-  ? html`<div role="status" class="notice"><strong>Copy this link now — it will NOT be shown again:</strong><div class="linkrow"><code id="onetime-link">${opts.oneTimeLink}</code><button type="button" class="copy" data-copy="onetime-link">Copy</button></div></div>`
+${opts.link
+  ? html`<div role="status" class="notice"><strong>${opts.link.heading}</strong><div class="linkrow"><code id="onetime-link">${opts.link.url}</code><button type="button" class="copy" data-copy="onetime-link">Copy</button></div></div>`
   : ""}
 <section>
 <h2>Generate code</h2>
@@ -90,16 +91,17 @@ ${opts.oneTimeLink
 <h2>Codes</h2>
 <div class="table-scroll">
 <table>
-  <thead><tr><th>Label</th><th>Asset</th><th>Status</th><th>Last used</th><th>Redemptions</th><th></th></tr></thead>
+  <thead><tr><th>Label</th><th>Asset</th><th>Status</th><th>Last used</th><th>Redemptions</th><th></th><th></th></tr></thead>
   <tbody>
     ${codesRows.length === 0
-      ? html`<tr><td colspan="6" class="empty">No codes yet — generate one above to share an asset with a recipient.</td></tr>`
+      ? html`<tr><td colspan="7" class="empty">No codes yet — generate one above to share an asset with a recipient.</td></tr>`
       : codesRows.map((c) => html`<tr>
       <td>${c.label}${orphans.has(c.asset_slug) ? html` <span class="warn">⚠ orphaned</span>` : ""}</td>
       <td>${manifest[c.asset_slug]?.title ?? c.asset_slug}</td>
       <td><span class="status ${codeStatus(c, nowSec)}">${codeStatus(c, nowSec)}</span></td>
       <td>${c.last_used_at !== null ? fmtUtc(c.last_used_at) : html`<span class="muted">—</span>`}</td>
       <td class="num">${c.use_count}</td>
+      <td><form method="post" action="/admin/show"><input type="hidden" name="id" value="${c.id}"><button type="submit" class="revoke">Show link</button></form></td>
       <td><form method="post" action="/admin/revoke"><input type="hidden" name="id" value="${c.id}"><button type="submit" class="revoke" ${c.revoked_at !== null ? "disabled" : ""}>Revoke</button></form></td>
     </tr>`)}
   </tbody>
@@ -149,8 +151,11 @@ admin.post("/admin/codes", async (c) => {
   }
   const code = await createCode(c.env.DB, slug, label, expiry, c.env.CODE_VAULT_KEY);
   // Show ONCE (spec §8, §3 D3): the raw code is not persisted and cannot be recovered.
-  const oneTimeLink = `${c.env.PUBLIC_ORIGIN}/a/${slug}?code=${code}`;
-  return c.html(panelPage({ oneTimeLink, host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)));
+  const link = {
+    url: `${c.env.PUBLIC_ORIGIN}/a/${slug}?code=${code}`,
+    heading: "Copy this link now — it will NOT be shown again:",
+  };
+  return c.html(panelPage({ link, host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)));
 });
 
 admin.post("/admin/revoke", async (c) => {
@@ -158,4 +163,23 @@ admin.post("/admin/revoke", async (c) => {
   const form = await c.req.formData();
   await revokeCode(c.env.DB, String(form.get("id") ?? ""));
   return c.redirect("/admin", 302);
+});
+
+// Show link (design 2026-07-03, amends spec §3 D3): decrypt code_enc via the CODE_VAULT_KEY ring
+// and re-render the panel with the recovered URL in the copy row. Explicit action only — the raw
+// code appears in no other response. Pre-vault rows (code_enc NULL) and any decrypt failure render
+// a calm "not recoverable" message (decryptCode fails closed to null).
+admin.post("/admin/show", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const row = await getCodeEnc(c.env.DB, String(form.get("id") ?? ""));
+  const host = displayHost(c.env.PUBLIC_ORIGIN);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!row) return c.html(panelPage({ error: "unknown code", host }, await listCodes(c.env.DB), nowSec), 400);
+  const rawCode = await decryptCode(row.code_enc, c.env.CODE_VAULT_KEY);
+  if (rawCode === null) {
+    return c.html(panelPage({ error: `"${row.label}" is not recoverable (minted before the vault)`, host }, await listCodes(c.env.DB), nowSec));
+  }
+  const link = { url: `${c.env.PUBLIC_ORIGIN}/a/${row.asset_slug}?code=${rawCode}`, heading: `Link for ${row.label}:` };
+  return c.html(panelPage({ link, host }, await listCodes(c.env.DB), nowSec));
 });
