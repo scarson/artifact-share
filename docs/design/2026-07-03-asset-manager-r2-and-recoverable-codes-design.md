@@ -1,6 +1,6 @@
 # Asset manager on R2 + recoverable share codes — design
 
-**Date:** 2026-07-03 · **Status:** APPROVED by owner 2026-07-03 (with amendment: keep original zip + per-asset Download) · **Supersedes:** spec §7's
+**Date:** 2026-07-03 · **Status:** APPROVED by owner 2026-07-03 (amendments: keep original zip + per-asset Download; Part C public assets + alias routes added at owner request the same night) · **Supersedes:** spec §7's
 git-native asset pipeline (bundled Text modules) and spec §3 D3's hash-only code storage.
 **Brainstorm mode:** owner-directed self-answered (owner set the requirements and asked the agent
 to answer the open questions itself).
@@ -112,6 +112,8 @@ CREATE TABLE assets (
   slug TEXT PRIMARY KEY,              -- opaque 22-char token, server-minted
   title TEXT NOT NULL,
   active_version INTEGER,             -- NULL = nothing published (codes fail closed)
+  is_public INTEGER NOT NULL DEFAULT 0,  -- Part C: 1 = viewable without a code
+  public_alias TEXT UNIQUE,           -- Part C: optional pretty route (e.g. "about"); served only while public
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -193,6 +195,28 @@ and "new version of existing".
 - `CODE_VAULT_KEY` secret per env (Part A), `k1:`-prefixed key ring; added to
   `secrets.required` in both env blocks.
 
+### Part C — public assets + alias routes (owner-requested 2026-07-03)
+
+A **Public** toggle per asset: when `is_public = 1` and an active version exists, `/a/<slug>` (and
+its `/a/<slug>/*` subresources) serve WITHOUT a code or cookie. Codes minted for a public asset
+keep working (harmless). Toggling public off restores the gate instantly — same fail-closed D1
+check path, evaluated per request.
+
+An optional **`public_alias`** gives a public asset a friendly route: `GET /<alias>` (and
+`/<alias>/*` for bundle subresources) serves the active version. Rules:
+- Alias shape `^[a-z0-9-]{1,32}$`, globally unique, server-validated; RESERVED names rejected:
+  `a`, `admin`, `robots.txt`, `favicon.ico`, `cdn-cgi` (Cloudflare-reserved path prefix).
+- Alias routes are registered AFTER every fixed route (`/`, `/robots.txt`, `/a/*`, `/admin*`), so
+  they can never shadow first-party surfaces even if validation were bypassed — defense in depth.
+- An alias on a non-public or unpublished asset serves the generic failure page (byte parity).
+- Enumeration posture: a public asset is deliberately enumerable at its alias — that is the
+  point of the toggle. Slugs stay opaque; there is still no listing endpoint anywhere.
+- `robots.txt` stays `Disallow: /` and the global `x-robots-tag: noindex` stays — public means
+  "no code required", not "search-indexed". Revisit only if the owner asks.
+
+First consumer: the **architecture explainer** (`/about`) — a fun single-page HTML asset
+describing how this app works, uploaded as a public asset with alias `about`.
+
 ## 4. Self-answered open questions
 
 | Question | Answer | Why |
@@ -205,6 +229,9 @@ and "new version of existing".
 | Subresource auth? | Cookie re-check per request, no `?code=` redeem on subpaths | Preserves instant revocation; keeps redemption single-entry |
 | Caps | 200 files / 25 MB file / 100 MB version | Generous for self-contained reports; adjustable constants |
 | KV anywhere? | No | Eventual consistency is wrong for both authz and version flips |
+| Public toggle semantics | Per-request D1 check, same fail-closed path | Toggling off must be instant, like revocation |
+| Alias collisions with app routes | Reserved-name validation + alias routes registered last | Two independent layers (defense in depth) |
+| Rate limiting on public serves | None (public content), malformed-shape counter only | The limiter protects redemption; public paths have no secrets to guess |
 
 ## 5. Security posture summary
 
