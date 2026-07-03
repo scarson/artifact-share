@@ -17,10 +17,10 @@ export default defineConfig(async () => {
     test: {
       include: ["src/**/*.test.ts"],
       setupFiles: ["./src/test/apply-migrations.ts"],
-      // argon2id is memory-hard by design (~250ms/hash); the admin login-flow tests run several
-      // per test and, under the concurrent worker pool, can exceed Vitest's 5s default. Give the
-      // KDF room so CI (the deploy gate) doesn't red on cost, not correctness. This does NOT weaken
-      // any assertion — it only lengthens the wall-clock budget.
+      // Crypto in the tests (RSA keypair generation for the Cloudflare Access JWT tests, jose
+      // sign/verify) can be slow under the concurrent worker pool and occasionally exceed Vitest's
+      // 5s default. Give a generous per-test budget so CI (the deploy gate) reds on correctness, not
+      // cost. Does NOT weaken any assertion — only lengthens the wall-clock budget.
       testTimeout: 30000
     },
     plugins: [

@@ -34,6 +34,17 @@ test("returns null for an undefined/missing token", async () => {
   expect(await verifyAccessToken("", CFG, publicKey)).toBeNull();
 });
 
+test("a malformed teamDomain fails CLOSED (returns null, does not throw)", async () => {
+  // No injected keySet ⇒ the module builds createRemoteJWKSet(new URL(`${teamDomain}/...`)). An
+  // empty or scheme-less teamDomain makes `new URL()` throw; it MUST be caught → null, never escape
+  // as a 500 (fail-page parity). URL construction fails before any network fetch, so no network here.
+  const { privateKey } = await keys();
+  const tok = await mkToken(privateKey);
+  for (const badDomain of ["", "   ", "team.cloudflareaccess.com"]) {
+    expect(await verifyAccessToken(tok, { ...CFG, teamDomain: badDomain })).toBeNull();
+  }
+});
+
 test("rejects a token signed by a DIFFERENT key (forged)", async () => {
   const signer = await keys();
   const verifier = await keys();
