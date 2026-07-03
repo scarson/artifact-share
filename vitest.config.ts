@@ -41,8 +41,12 @@ export default defineConfig(async () => {
             ENVIRONMENT: "production",
             PUBLIC_ORIGIN: "https://share.test",
             ASSET_COOKIE_SECRET: "k1:test-asset-secret-do-not-use-in-prod-00000000000",
-            // Cloudflare Access config for admin-auth tests (cfaccess module). Deliberately no
-            // ACCESS_DEV_BYPASS here: tests must exercise real Access enforcement, not the local-dev bypass.
+            // Cloudflare Access config for admin-auth tests (cfaccess module). ACCESS_DEV_BYPASS is
+            // pinned OFF ("0" — only the exact string "1" enables it) because the pool also loads
+            // .dev.vars, where SETUP.md tells developers to set ACCESS_DEV_BYPASS=1 for local QA;
+            // without this pin an existing .dev.vars silently disables Access enforcement and the
+            // deny-by-default tests fail. Tests must exercise real Access enforcement.
+            ACCESS_DEV_BYPASS: "0",
             ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
             ACCESS_AUD: "test-aud-tag",
             ADMIN_EMAIL: "admin@share.test"
