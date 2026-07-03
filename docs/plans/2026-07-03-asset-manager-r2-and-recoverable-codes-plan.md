@@ -55,7 +55,7 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** ALL phases shipped — A (PR #4), B+C (PR #5), merged to main 2026-07-03. One owner action remains: widen the CI deploy token (Zone Workers Routes + R2 Storage) so production deploys, then publish /about + run the live mint→redeem check. See docs/HANDOFF.md.
+**Overall (updated 2026-07-04):** Phases A–C shipped. Phase D (general file sharing: any file type + on-demand zip Unpack, migration 0005) + a root→About link built, PR #6 open (blind review in flight). ALL earlier phases shipped — A (PR #4), B+C (PR #5), merged to main 2026-07-03. One owner action remains: widen the CI deploy token (Zone Workers Routes + R2 Storage) so production deploys, then publish /about + run the live mint→redeem check. See docs/HANDOFF.md.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
