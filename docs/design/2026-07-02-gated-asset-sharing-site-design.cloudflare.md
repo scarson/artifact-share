@@ -171,6 +171,14 @@ Identical model to the source; only platform-specific surfaces are re-mapped.
   10 MiB script limit also gives the bundled-asset mechanism its headroom, §7). Confirmed — the
   owner is on Workers Paid (§15 Q9, resolved).
 
+> **Amendment (2026-07-03, owner-approved) — R2 asset manager (2026-07-03):** §7's bundled Text-module
+> mechanism is superseded. Asset bytes now live in a private R2 bucket (binding-only, no public URL);
+> metadata (slug/title/versions/active pointer/public flag/alias) lives in D1. §13's integrity alert
+> re-points from "module missing from the bundle" to "active version's R2 object missing"
+> (`asset_object_missing`). The `assets`-key ban and no-static-surface invariants are unchanged.
+> A public-asset toggle + alias routes were added (design §Part C). Full detail:
+> `docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md`.
+
 ## 5. Data model
 
 All DDL below is SQLite (D1). **Time is stored as INTEGER Unix epoch seconds** — SQLite has no
