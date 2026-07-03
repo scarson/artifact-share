@@ -121,3 +121,17 @@ test("public toggle + alias via POST; reserved alias rejected; CSRF enforced", a
   const forged = await app.request("/admin/assets/public", { method: "POST", headers: { origin: "https://evil.example" }, body: new URLSearchParams({ slug, public: "1" }).toString() }, AUTH);
   expect(forged.status).toBe(403);
 });
+
+test("Unpack is idempotent/self-healing — re-running after files exist re-derives from the preserved original", async () => {
+  await upload("/admin/assets", { title: "Site" }, { name: "s.zip", bytes: zipSync({ "index.html": HTML, "app.css": strToU8("body{}") }) });
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  expect((await ap({ slug, version: "1" }, "/admin/assets/unpack")).status).toBe(200);
+  expect(await env.ASSETS.get(`orig/${slug}/1.zip`)).not.toBeNull(); // original preserved for download + re-heal
+  // Simulate the post-unpack state where the entry .zip is gone (it was cleared) and unpack is
+  // triggered again: it must succeed by re-reading orig/, not fail with "nothing to unpack".
+  await env.DB.prepare("UPDATE asset_versions SET entry = 's.zip' WHERE slug = ?1").bind(slug).run();
+  const again = await ap({ slug, version: "1" }, "/admin/assets/unpack");
+  expect(again.status).toBe(200);
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("index.html");
+  expect(await env.ASSETS.get(`a/${slug}/1/app.css`)).not.toBeNull();
+});

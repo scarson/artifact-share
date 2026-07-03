@@ -106,3 +106,15 @@ test("single-file public asset: a non-renderable type serves as an attachment do
   expect(res.headers.get("content-disposition")).toContain("attachment");
   expect(res.headers.get("content-disposition")).toContain("data.zip");
 });
+
+test("single-file SVG serves inline but with the restrictive default CSP (no unsafe-inline — embedded script can't run)", async () => {
+  await seedSingleFile("logo.svg", "image/svg+xml", "<svg xmlns='http://www.w3.org/2000/svg'><script>1</script></svg>");
+  const res = await app.request(`/a/${FIXTURE_SLUG}/`, {}, env);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toBe("image/svg+xml");
+  expect(res.headers.get("content-disposition")).toBeNull();               // inline (renderable image)
+  const csp = res.headers.get("content-security-policy")!;
+  expect(csp).not.toContain("unsafe-inline");                              // NOT ASSET_CSP — script neutralized
+  expect(csp).toContain("frame-ancestors 'none'");                         // it's the ADMIN_CSP default
+  expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+});

@@ -209,17 +209,21 @@ admin.post("/admin/assets/unpack", async (c) => {
   const version = Number(form.get("version"));
   const entry = await versionEntry(c.env.DB, slug, version);
   if (entry === null) return panelError(c, "unknown version");
-  const zipObj = await readAssetFile(c.env.ASSETS, slug, version, entry).catch(() => null);
-  if (!zipObj) return panelError(c, "nothing to unpack");
+  // Source the zip from orig/ FIRST, falling back to the stored entry. orig/ is written before the
+  // destructive store below, so a re-run after a partial failure (files written, entry not yet
+  // repointed) self-heals instead of dead-ending at "nothing to unpack".
+  const src = (await readOriginalZip(c.env.ASSETS, slug, version).catch(() => null))
+    ?? (await readAssetFile(c.env.ASSETS, slug, version, entry).catch(() => null));
+  if (!src) return panelError(c, "nothing to unpack");
+  const zipBytes = new Uint8Array(await src.arrayBuffer());
   let files: ReturnType<typeof extractBundle>;
   try {
-    files = extractBundle(new Uint8Array(await zipObj.arrayBuffer()));
+    files = extractBundle(zipBytes);
   } catch (e) {
     return panelError(c, e instanceof UploadError ? e.message : "not a browsable bundle");
   }
   try {
-    const zipBytes = new Uint8Array(await (await readAssetFile(c.env.ASSETS, slug, version, entry))!.arrayBuffer());
-    await preserveOriginalZip(c.env.ASSETS, slug, version, zipBytes); // keep for Download
+    await preserveOriginalZip(c.env.ASSETS, slug, version, zipBytes); // keep for Download + re-heal, BEFORE the clean-slate store
     await storeVersion(c.env.ASSETS, slug, version, files, null);     // clears the .zip, writes files
     await updateVersionEntry(c.env.DB, slug, version, "index.html", files.length, files.reduce((n, f) => n + f.bytes.length, 0));
   } catch (e) {
