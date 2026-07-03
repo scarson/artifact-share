@@ -293,7 +293,13 @@ because a throwing ring means EVERY production mint 500s.
 
 **Context:** `createCode` currently takes `(db, assetSlug, label, expiry, gen?)` and inserts only the hash. All three INSERT branches gain a `code_enc` value. The ONLY call site is `src/routes/admin.ts` `POST /admin/codes`. Tests in `adminRepo.test.ts` call `createCode` directly — update every call site in that file with the test ring constant.
 
-- [ ] **Step 1: Failing tests** (append to `src/lib/db/adminRepo.test.ts`; use `env.CODE_VAULT_KEY` as the ring):
+- [ ] **Step 1: Failing tests** (append to `src/lib/db/adminRepo.test.ts`; use `env.CODE_VAULT_KEY` as the ring). That file uses inline slug literals and does not define `SLUG` or import the vault — add at its top:
+
+```ts
+import { decryptCode } from "../vault";
+import { getCodeEnc } from "./adminRepo";           // extend the existing adminRepo import
+const SLUG = "testasset0000000000000";
+```
 
 ```ts
 test("createCode stores code_enc decryptable back to the returned raw code (all 3 expiry branches)", async () => {
@@ -440,13 +446,10 @@ command there and retry. Record the outcome in this plan.
 
 **Execution Status:** ⬜ NOT STARTED
 
-**Owner-action gate (VERIFIED BLOCKED 2026-07-03 08:09Z — before MERGE, not before coding):**
-`wrangler r2 bucket create` fails with API code 10042 "Please enable R2 through the Cloudflare
-Dashboard" — **R2 is not enabled on the account**. Owner must: dashboard → R2 → enable (accept
-terms), then run `npx wrangler r2 bucket create artifact-share-prod && npx wrangler r2 bucket
-create artifact-share-preview` (or an agent retries once R2 is enabled). Until then Phase B/C
-build + test + PR normally (miniflare simulates R2 locally) but the PR MUST NOT merge — a deploy
-with `r2_buckets` pointing at nonexistent buckets fails and CI reds.
+**Owner-action gate: ✅ CLEARED 2026-07-03 08:24Z.** R2 was account-disabled (API 10042, verified
+08:09Z); the owner enabled it in the dashboard, and both buckets now exist (`artifact-share-prod`
++ `artifact-share-preview`, created 08:24Z via wrangler; the "add binding on your behalf?" prompt
+was declined — bindings live in the env blocks per B2). Phase B/C may merge normally.
 
 ### Task B1: Migration 0004 — `assets` + `asset_versions`
 
@@ -508,7 +511,7 @@ CREATE TABLE asset_versions (
 `env.preview`: `{ "binding": "ASSETS", "bucket_name": "artifact-share-preview" }` · `env.production`: `{ "binding": "ASSETS", "bucket_name": "artifact-share-prod" }`. NOTE for executor: this is the `r2_buckets` key — the banned `assets` key remains banned; do not confuse them. The bucket must NEVER get public access, an r2.dev URL, or a custom domain (design §3; add that sentence to SETUP.md).
 - [ ] **Step 2:** `src/env.ts` — add `/** Private R2 bucket: asset bytes under a/<slug>/<v>/…, originals under orig/. Binding-only access. */ ASSETS: R2Bucket;`
 - [ ] **Step 3:** `npm install fflate` (runtime dep, pure JS — works on Workers).
-- [ ] **Step 4:** Attempt bucket creation (see phase banner); document outcome in SETUP.md §2.2 (creation commands + "decline any wrangler auto-add prompt; the bindings are already in wrangler.jsonc" — same guardrail as D1).
+- [ ] **Step 4:** Attempt bucket creation (see phase banner); document outcome in a NEW SETUP.md section (e.g. "§2b — R2 buckets"; §2.2 already exists as the migrations step — do not collide) with the creation commands + "decline any wrangler auto-add prompt; the bindings are already in wrangler.jsonc" — same guardrail as D1.
 - [ ] **Step 5:** `npm test` + `npx tsc --noEmit` + `npx wrangler deploy --dry-run --env production` → green (dry-run validates binding syntax without needing the bucket). Commit — `chore(assets): R2 ASSETS binding ×3 envs + fflate`
 
 ### Task B3: Asset repository (D1)
@@ -695,7 +698,7 @@ describe("zip bundles", () => {
     expect(() => validateUpload("b.zip", zip({ "index.html": html, "run.exe": html }))).toThrow(/extension/);
   });
   test("ALL size/count caps throw (small injected limits exercise each branch)", () => {
-    const tiny = { uploadBytes: 10_000, entries: 2, fileBytes: 50, totalBytes: 60 } as const;
+    const tiny: UploadLimits = { uploadBytes: 10_000, entries: 2, fileBytes: 50, totalBytes: 60 };
     expect(() => validateUpload("b.zip", zip({ "index.html": html, "a.txt": strToU8("x"), "b.txt": strToU8("x") }), tiny)).toThrow(/entries/);
     expect(() => validateUpload("b.zip", zip({ "index.html": html, "big.txt": strToU8("y".repeat(51)) }), tiny)).toThrow(/too large/);
     expect(() => validateUpload("b.zip", zip({ "index.html": strToU8("z".repeat(40)), "c.txt": strToU8("z".repeat(30)) }), tiny)).toThrow(/total size/);
@@ -715,12 +718,15 @@ import { unzipSync } from "fflate";
 /** Upload validation (design §3). Admin-only surface (Access-gated), but zip contents are still
  *  parsed defensively: path traversal, caps, extension allowlist. Caps sized for the ~128 MB
  *  Worker isolate (unzipSync inflates in memory): see plan Task B4 deviation note. */
-export const LIMITS = {
+export interface UploadLimits {
+  uploadBytes: number; entries: number; fileBytes: number; totalBytes: number;
+}
+export const LIMITS: UploadLimits = {
   uploadBytes: 20 * 2 ** 20,   // the file field itself (html or zip)
   entries: 200,
   fileBytes: 20 * 2 ** 20,     // any single uncompressed file
   totalBytes: 60 * 2 ** 20,    // sum of uncompressed files
-} as const;
+};
 
 const CONTENT_TYPES: Record<string, string> = {
   html: "text/html; charset=utf-8", css: "text/css", js: "text/javascript", mjs: "text/javascript",
@@ -758,7 +764,7 @@ function normalizePath(raw: string): string {
 
 /** `limits` is injectable FOR TESTS ONLY (small values exercise every cap throw); production
  *  call sites always use the default. */
-export function validateUpload(filename: string, data: Uint8Array, limits: typeof LIMITS = LIMITS): { files: UploadFile[]; isBundle: boolean } {
+export function validateUpload(filename: string, data: Uint8Array, limits: UploadLimits = LIMITS): { files: UploadFile[]; isBundle: boolean } {
   if (data.length > limits.uploadBytes) throw new UploadError(`upload exceeds ${limits.uploadBytes / 2 ** 20} MB`);
   const lower = filename.toLowerCase();
   if (lower.endsWith(".html") || lower.endsWith(".htm")) {
@@ -941,8 +947,10 @@ export const FIXTURE_SLUG = "testasset0000000000000";
  *  (apply-migrations.ts) covers D1 ONLY — R2 persists across tests within a file, so the R2 put
  *  here is an idempotent overwrite, which also repairs objects a prior test deleted. */
 export async function seedFixtureAsset(html = "<!doctype html><p>fixture ok</p>"): Promise<void> {
-  await env.DB.prepare("INSERT INTO assets (slug, title, active_version) VALUES (?1, 'Test Fixture', 1)").bind(FIXTURE_SLUG).run();
-  await env.DB.prepare("INSERT INTO asset_versions (slug, version, file_count, total_bytes) VALUES (?1, 1, 1, ?2)").bind(FIXTURE_SLUG, html.length).run();
+  // INSERT OR IGNORE: file-wide beforeEach seeding + tests composing helpers that seed again must
+  // not hit a PK violation.
+  await env.DB.prepare("INSERT OR IGNORE INTO assets (slug, title, active_version) VALUES (?1, 'Test Fixture', 1)").bind(FIXTURE_SLUG).run();
+  await env.DB.prepare("INSERT OR IGNORE INTO asset_versions (slug, version, file_count, total_bytes) VALUES (?1, 1, 1, ?2)").bind(FIXTURE_SLUG, html.length).run();
   await env.ASSETS.put(`a/${FIXTURE_SLUG}/1/index.html`, html, { httpMetadata: { contentType: "text/html; charset=utf-8" } });
 }
 ```
@@ -1043,9 +1051,13 @@ admin.post("/admin/assets", async (c) => {
   } catch (e) {
     return panelError(c, e instanceof UploadError ? e.message : "invalid upload");
   }
-  const slug = await createAsset(c.env.DB, title);
-  await storeVersion(c.env.ASSETS, slug, 1, validated.files, validated.isBundle ? data : null);
-  await recordVersion(c.env.DB, slug, 1, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), true);
+  try {
+    const slug = await createAsset(c.env.DB, title);
+    await storeVersion(c.env.ASSETS, slug, 1, validated.files, validated.isBundle ? data : null);
+    await recordVersion(c.env.DB, slug, 1, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), true);
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "upload failed", 500); // same no-raw-500 rule as every asset mutation
+  }
   return renderPanel(c);
 });
 ```
@@ -1077,6 +1089,21 @@ admin.get("/admin/assets/download", async (c) => {
 - Test: `src/routes/gate.test.ts` (append subresource + parity cases)
 
 **Context:** keep EVERY existing gate invariant: env gate first; slug-shape check before DB; redeem precedence; rate-limit call ORDER unchanged; fail closed on any DB/R2 error; integrity alert only for "valid code but active version's object missing"; unpublished (`active_version` NULL) is a SILENT generic page. The cookie (`path=/a/<slug>`) already flows to subpaths.
+
+**Trailing-slash canonicalization (load-bearing for bundles — RFC 3986 relative resolution):** a
+document served at `/a/<slug>` (no trailing slash) makes every RELATIVE subresource reference in
+an uploaded bundle resolve to `/a/<ref>` — outside the bundle — and break. Therefore:
+- the redeem redirect targets `/a/${slug}/` (WITH trailing slash) — update the existing redirect
+  assertion(s) in gate.test.ts to pin Location `/a/${slug}/` exactly;
+- a document request to bare `/a/:slug` that passes authorization (valid cookie, or public in C2)
+  302-redirects to `/a/${slug}/` instead of serving a body — the redirect happens ONLY
+  post-authorization, so it is never a slug-validity oracle (unauthenticated bare loads still get
+  the generic page);
+- the `/a/:slug/*` handler treats an EMPTY decoded tail as `index.html` (the document serves
+  there);
+- `mintAndRedeem` in the tests follows the redirect to `/a/${slug}/`;
+- add a test: `GET /a/${slug}/` → 200 html AND `GET /a/${slug}/css/app.css` under the same cookie
+  → 200 (proves in-bundle relative resolution end-to-end).
 
 - [ ] **Step 1: Failing tests** (append; seed with `seedFixtureAsset` which B6 added to this file's setup):
 
@@ -1167,7 +1194,11 @@ export async function gateLimitOk(db: D1Database, kind: "redeem" | "load", slug:
 
 Import `assetExists` from `./db/assetRepo`; drop the `isKnownSlug` import and the injectable
 `known` default parameter. Update `slugKey` call sites/tests (`grep -rn "slugKey" src/`) to pass a
-boolean; `badShapeLimitOk` is untouched (it never keyed by slug).
+boolean; `badShapeLimitOk` is untouched (it never keyed by slug). **Coverage guard:** the existing
+per-slug limiter test's slug has no assets row, so post-rewire it exercises only the
+`unknown-slug` bucket and proves nothing about per-slug keying — seed an asset row in that test
+and assert the D1 `rate_limits` key is literally `redeem:<slug>` (and update its stale "not in
+manifest" comment).
 
 Clean-load branch: same `activeVersion` + `readAssetFile(env.ASSETS, slug, v, "index.html")`; on hit set `ASSET_CSP` + the object's content type and `return c.body(obj.body)`; on MISS (valid cookie, active version set, object gone) log the SAME `asset_object_missing` structured error and return `failurePage()` — the §13 integrity alert covers both branches, exactly as the module check does today. New route AFTER the existing one:
 
@@ -1203,11 +1234,11 @@ gate.get("/a/:slug/*", async (c) => {
 ### Task B8: Retire the bundling pipeline
 
 **Files:**
-- Delete: `src/lib/manifest.ts`, `src/lib/manifest.test.ts`, `src/lib/assets.ts`, `.generated/` (both files), `assets/testasset0000000000000/`, `scripts/build-manifest.mjs`, `scripts/new-asset.mjs`
+- Delete: `src/lib/manifest.ts`, `src/lib/manifest.test.ts`, `src/lib/assets.ts`, `src/types/html.d.ts` (the `declare module "*.html"` shim — nothing imports .html after this), `.generated/` (both files), `assets/testasset0000000000000/`, `scripts/build-manifest.mjs`, `scripts/new-asset.mjs`
 - Create: `scripts/lint-config.mjs`
 - Modify: `scripts/manifest-lib.mjs` (slim to the two config lints + keep their tests), `package.json` (scripts), `.github/workflows/deploy.yml` (both jobs), `README.md`
 
-**Ordering:** ONLY after B6+B7 are green — nothing may import the deleted modules (`grep -rn "manifest\|\.generated\|getAssetHtml\|assets-modules" src scripts` must return only the new lint files).
+**Ordering:** ONLY after B6+B7 are green — nothing may import the deleted modules (`grep -rn "manifest\|\.generated\|getAssetHtml\|assets-modules" src scripts` must return ONLY these three survivors: `scripts/manifest-lib.mjs`, `scripts/lint-config.mjs`, `src/lib/build/manifest-lib.test.ts`).
 
 - [ ] **Step 1:** `scripts/lint-config.mjs` (the two invariants keep their teeth):
 
@@ -1372,7 +1403,7 @@ render the served path as text, e.g. `<code>/about</code> (public)`.
 **Files:**
 - Create: `src/routes/publicAsset.ts` (shared serve helper + alias router)
 - Modify: `src/routes/gate.ts` (public short-circuit in both routes), `src/index.ts` (mount alias routes LAST, before notFound)
-- Test: `src/routes/publicAsset.test.ts` (new), `src/routes/gate.test.ts` (append public cases)
+- Test: `src/routes/publicAsset.test.ts` (new — ALL Phase C route tests live here; gate.test.ts is NOT touched in C2)
 
 **Ordering/shadowing invariant (do NOT deviate):** alias routes are mounted AFTER `gate` and
 `admin` in `src/index.ts` so `/a/*`, `/admin*`, `/`, `/robots.txt` always win; reserved-name
@@ -1399,7 +1430,7 @@ test("public asset serves at /a/<slug> with NO code and NO cookie; toggling off 
   expect(res.status).toBe(200);
   expect(await res.text()).toContain("fixture ok");
   expect(res.headers.get("set-cookie")).toBeNull();               // public path issues nothing
-  expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'"); // ASSET_CSP applied
+  expect(res.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'"); // ASSET_CSP specifically — the middleware default (ADMIN_CSP) has no unsafe-inline, so this cannot pass on the wrong header
   await setPublic(env.DB, FIXTURE_SLUG, false);
   expect(await (await app.request(`/a/${FIXTURE_SLUG}`, {}, env)).text()).toContain("invalid or has expired");
 });
@@ -1410,9 +1441,12 @@ test("public bundle subresources serve without a cookie", async () => {
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("text/css");
 });
-test("alias route serves the active version at /<alias> and /<alias>/<path>", async () => {
+test("alias: bare /<alias> 302s to /<alias>/ (relative-URL canonicalization); document + subresources serve under it", async () => {
   await seedPublic("about");
-  expect(await (await app.request("/about", {}, env)).text()).toContain("fixture ok");
+  const bare = await app.request("/about", { redirect: "manual" }, env);
+  expect(bare.status).toBe(302);
+  expect(bare.headers.get("location")).toBe("/about/");
+  expect(await (await app.request("/about/", {}, env)).text()).toContain("fixture ok");
   await env.ASSETS.put(`a/${FIXTURE_SLUG}/1/x.css`, "i{}", { httpMetadata: { contentType: "text/css" } });
   expect((await app.request("/about/x.css", {}, env)).status).toBe(200);
 });
@@ -1433,6 +1467,21 @@ test("?code= on a public asset serves publicly (no cookie minted, code not consu
   const n = await env.DB.prepare("SELECT count(*) AS n FROM codes WHERE use_count > 0").first<{ n: number }>();
   expect(n!.n).toBe(0);
 });
+test("public + alias response classes carry the FULL §9 security-header set (mirror the SELF header-contract pattern)", async () => {
+  await seedPublic("about");
+  for (const res of [
+    await app.request(`/a/${FIXTURE_SLUG}/`, {}, env),   // public 200
+    await app.request("/about/", {}, env),                // alias 200
+    await app.request("/no-such-alias", {}, env),         // alias failure
+  ]) {
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("strict-transport-security")).toBe("max-age=63072000");
+  }
+});
+
 test("fixed routes always win over aliases (defense in depth beyond reserved-name validation)", async () => {
   await seedPublic("about");
   expect(await (await app.request("/robots.txt", {}, env)).text()).toContain("Disallow");
@@ -1443,7 +1492,7 @@ test("fixed routes always win over aliases (defense in depth beyond reserved-nam
 - [ ] **Step 2:** Run → FAIL. **Step 3: Implement** — `src/routes/publicAsset.ts`:
 
 ```ts
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "../env";
 import { failurePage } from "../lib/failure";
 import { ASSET_CSP } from "../lib/http/headers";
@@ -1464,18 +1513,26 @@ export async function servePublicFile(env: Env, slug: string, version: number, p
 /** Alias routes — mounted LAST in index.ts (after gate + admin), so fixed routes always win. */
 export const publicAlias = new Hono<{ Bindings: Env }>();
 
-async function aliasHandler(c: { env: Env; req: { param: (k: string) => string; path: string } }): Promise<Response> {
+async function aliasHandler(c: Context<{ Bindings: Env }, "/:alias" | "/:alias/*">): Promise<Response> {
   if (!servesTraffic(c.env.ENVIRONMENT)) return failurePage();
-  const alias = c.req.param("alias");
-  if (!ALIAS_RE.test(alias)) return failurePage();
-  const hit = await publicAssetByAlias(c.env.DB, alias).catch(() => null);
-  if (!hit) return failurePage();
-  let sub = c.req.path.slice(`/${alias}`.length).replace(/^\//, "");
+  // Slice the RAW path ourselves: param() returns a DECODED alias, so slicing the raw path by the
+  // decoded value's length mis-slices any percent-encoded spelling. Split at the first "/" past
+  // the leading one, then decode each piece (malformed % ⇒ generic page, never a 500).
+  const raw = c.req.path.slice(1);
+  const cut = raw.indexOf("/");
+  let alias: string, sub: string;
   try {
-    sub = decodeURIComponent(sub);
+    alias = decodeURIComponent(cut < 0 ? raw : raw.slice(0, cut));
+    sub = decodeURIComponent(cut < 0 ? "" : raw.slice(cut + 1));
   } catch {
     return failurePage();
   }
+  if (!ALIAS_RE.test(alias)) return failurePage();
+  const hit = await publicAssetByAlias(c.env.DB, alias).catch(() => null);
+  if (!hit) return failurePage();
+  // Trailing-slash canonicalization (same RFC 3986 rationale as /a/:slug — see B7): a resolvable
+  // BARE alias document request redirects to `/${alias}/` so relative refs in bundles work.
+  if (cut < 0) return new Response(null, { status: 302, headers: { location: `/${alias}/` } });
   return servePublicFile(c.env, hit.slug, hit.active_version, sub === "" ? "index.html" : sub);
 }
 publicAlias.get("/:alias", aliasHandler);
@@ -1490,8 +1547,16 @@ logic — public wins over a present `?code=`):
   if (pub) return servePublicFile(c.env, slug, pub.active_version, /* index or decoded subpath */);
 ```
 
-(`/a/:slug` passes `"index.html"`; `/a/:slug/*` passes its already-decoded `path`.) `index.ts` —
-after `app.route("/", admin);` add `app.route("/", publicAlias);` (keep `app.notFound` last).
+**Final handler order (exact — do not reorder):**
+- `/a/:slug`: env gate → slug shape (+badShape limiter) → PUBLIC short-circuit (C2: resolves →
+  302 to `/a/${slug}/`) → `?code=` redeem branch (302 to `/a/${slug}/`) → cookie verify →
+  recheck → 302 to `/a/${slug}/` (canonicalize; the body serves from the wildcard route).
+- `/a/:slug/*`: env gate → slug shape (+badShape limiter) → decode tail (malformed % → failure)
+  → empty tail ⇒ `index.html` → PUBLIC short-circuit (C2: serves via `servePublicFile`) → cookie
+  verify (miss ⇒ bump load limiter + failure) → recheck → `activeVersion` → read/stream (miss on
+  `index.html` ⇒ integrity log; miss on any other path ⇒ silent failure page).
+`index.ts` — after `app.route("/", admin);` add `app.route("/", publicAlias);` (keep
+`app.notFound` last).
 - [ ] **Step 4:** Full suite + tsc → green (existing gated tests MUST pass unchanged — assets default non-public). **Step 5: Commit** — `feat(gate): public assets serve without codes; alias routes (/about-style)`
 
 ### Task C3: Architecture explainer asset (/about)
