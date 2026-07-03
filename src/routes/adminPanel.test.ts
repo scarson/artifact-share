@@ -103,3 +103,31 @@ test("panel-rendering responses carry Referrer-Policy: same-origin (GET and POST
   const post = await apost("/admin/codes", { slug: SLUG, label: "rp", days: "", date: "" });
   expect(post.headers.get("referrer-policy")).toBe("same-origin");
 });
+
+test("Show link reveals the SAME url that was minted (vault round-trip through the panel)", async () => {
+  const minted = await apost("/admin/codes", { slug: SLUG, label: "shower", days: "", date: "" });
+  const url = (await minted.text()).match(/(https:\/\/share\.test\/a\/[A-Za-z0-9_-]{22}\?code=[A-Za-z0-9_-]{22})/)![1];
+  const { id } = (await env.DB.prepare("SELECT id FROM codes").first<{ id: string }>())!;
+  const shown = await apost("/admin/show", { id });
+  const body = await shown.text();
+  expect(body).toContain(url);                 // identical link, recovered
+  expect(body).toContain("Link for shower");   // show-heading, not the mint heading
+});
+
+test("Show link on a pre-vault row (code_enc NULL) says not recoverable, no crash", async () => {
+  await apost("/admin/codes", { slug: SLUG, label: "old", days: "", date: "" });
+  await env.DB.prepare("UPDATE codes SET code_enc = NULL").run();
+  const { id } = (await env.DB.prepare("SELECT id FROM codes").first<{ id: string }>())!;
+  const res = await apost("/admin/show", { id });
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain("not recoverable");
+});
+
+test("Show link: unknown id → panel error; cross-site Origin → 403; unauthorized → generic page", async () => {
+  expect((await apost("/admin/show", { id: "nope" })).status).toBe(400);
+  expect((await apost("/admin/show", { id: "x" }, { origin: "https://evil.example" })).status).toBe(403);
+  const unauth = await app.request("/admin/show", { method: "POST",
+    headers: { origin: BASE, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ id: "x" }).toString() }, env);
+  expect(await unauth.text()).toContain("invalid or has expired");
+});

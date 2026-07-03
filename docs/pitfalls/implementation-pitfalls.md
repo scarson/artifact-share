@@ -16,6 +16,13 @@ reveals the raw code/link exactly ONCE at generation; it is unrecoverable afterw
 `code` column, or an admin list that rebuilds a `?code=` link per row, silently leaks live reusable
 bearer codes on any DB read/backup/export/Time-Travel restore.
 
+**AMENDED 2026-07-03 (owner-ratified):** lookup remains hash-only, but the raw code is ALSO
+stored AES-256-GCM-encrypted in `codes.code_enc` (key = the `CODE_VAULT_KEY` Worker secret,
+`src/lib/vault.ts`) to power the admin Show-link action — see
+`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md` §2. The invariant that
+survives: the raw code is NEVER stored in the clear, never logged, and appears in no response
+except show-once mint and the explicit Show-link action.
+
 ## Redemption is ONE atomic conditional UPDATE (spec §6 step 4)
 Validate + `use_count+1` + `last_used_at=unixepoch()` + compute `cookie_exp` in a SINGLE statement:
 `UPDATE codes SET use_count = use_count + 1, last_used_at = unixepoch() WHERE code_hash = ?1 AND

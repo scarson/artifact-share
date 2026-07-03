@@ -55,6 +55,13 @@ stated explicitly, never silently dropped.
   memory-hard KDF requires the Workers Paid plan (§8/§15 Q9), and zone-level cache/WAF features
   are foot-guns that must not be enabled casually on this zone (§9).
 
+> **Amendment (2026-07-03, owner-ratified):** §3 D3's "codes are non-recoverable" is superseded —
+> codes are now ALSO stored AES-GCM-encrypted (`codes.code_enc`, `CODE_VAULT_KEY` secret) so the
+> admin can re-show a sent link ("Show link" panel action). §8's "lost link ⇒ revoke + reissue"
+> becomes "lost link ⇒ Show link; revoke if exposure is suspected". Hash-only lookup, no-plaintext,
+> and no-logging invariants unchanged. Full rationale:
+> `docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md` §2.
+
 ## 1. Purpose
 
 A single-admin website for publishing self-contained interactive HTML "assets" (client reports,
