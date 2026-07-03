@@ -55,11 +55,11 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Not started.
+**Overall:** Phase A shipped (PR #4); B/C in progress; plan review converged round 8 (0 findings).
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
-| A — Recoverable codes vault | 🚧 In progress | — | A1–A5 implemented + browser-verified; PR #4 open (review in flight); A6 pending prod deploy |
+| A — Recoverable codes vault | ✅ Shipped | `0ec72be` (PR #4) | A6 live-verify deferred pending prod-deploy token fix |
 | B — R2 asset manager | ⬜ Not started | — | tasks B1–B9 sequential |
 | C — Public assets + /about (owner-requested 2026-07-03) | ⬜ Not started | — | after B; C1–C4 sequential |
 
@@ -102,7 +102,7 @@ DELETED in B8: src/lib/manifest.ts, src/lib/assets.ts, .generated/, assets/,
 
 ## Phase A — Recoverable codes vault
 
-**Execution Status:** 🚧 IN PROGRESS — claimed 2026-07-03 08:28Z (branch `claude/eager-almeida-95f4ee`, landing on `dev`). A1–A5 implemented + browser-verified (Show link recovers the exact minted URL) as of 08:50Z; group review + PR pending; A6 (live verify) pending production deploy.
+**Execution Status:** ✅ SHIPPED on 2026-07-03 (PR #4 merged at `0ec72be`). A1–A5 browser-verified + 3-round adversarial gate (blind security review: SHIP; 3 LOW hardening findings applied at `99599c3` — duplicate-kid throw, decrypt-failure attribution, onError header uniformity). ⏸ A6 (production live verify) DEFERRED pending the production deploy, which is blocked on the CI token gaining Zone → Workers Routes → Edit on scarson.io — see docs/HANDOFF.md "Production deploy blocker"; verify per Task A6 once a main deploy goes green.
 
 Ships alone. The `CODE_VAULT_KEY` secret is **already set on both live Workers** (owner session
 2026-07-03, `k1:`-prefixed, independent random keys per env) — executors only wire config/code.
