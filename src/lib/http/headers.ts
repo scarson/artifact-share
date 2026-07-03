@@ -12,7 +12,7 @@ export const ASSET_CSP =
 // printed. img-src data: is for the inline SVG favicon.
 export const ADMIN_CSP =
   "default-src 'self'; " +
-  "style-src 'sha256-yAEFmINTkCHC3+A/1bv1OXvr7Zwb8UtKjnlSoXwayrc=' 'sha256-qh09FeVXl4bPtVclOWIkuVt2tVLxPhiwpwwqzq5DOpA='; " +
+  "style-src 'sha256-yAEFmINTkCHC3+A/1bv1OXvr7Zwb8UtKjnlSoXwayrc=' 'sha256-hgRgyNpE5IpPn7GYrsC17fLSZB7qYqNfu1FaFXwGNwo='; " +
   "script-src 'sha256-t8r2vfkBVAJuigX+lZ3X6kR5DE9oTstCy57ksIYKyJ8='; " +
   "img-src 'self' data:; " +
   "frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'";

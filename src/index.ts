@@ -4,6 +4,7 @@ import { gate } from "./routes/gate";
 import { admin } from "./routes/admin";
 import { ADMIN_CSP, baseHeaders } from "./lib/http/headers";
 import { failurePage } from "./lib/failure";
+import { publicAlias } from "./routes/publicAsset";
 import { displayHost, publicPage } from "./lib/ui/styles";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -50,6 +51,8 @@ app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 
 app.route("/", gate);
 app.route("/", admin);
+// Alias routes LAST (after the fixed routes above) so /, /robots.txt, /a/*, /admin* always win.
+app.route("/", publicAlias);
 
 // Every unknown route returns the SAME generic page (spec §13 deny tests: probe URLs land
 // here; no route class is distinguishable from a gate failure).

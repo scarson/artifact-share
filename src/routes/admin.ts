@@ -7,7 +7,7 @@ import { originOk } from "../lib/http/csrf";
 import { verifyAccessToken } from "../lib/auth/cfaccess";
 import { createCode, getCodeEnc, listCodes, revokeCode, type ExpirySpec } from "../lib/db/adminRepo";
 import { decryptCode } from "../lib/vault";
-import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion } from "../lib/db/assetRepo";
+import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion, setAlias, setPublic } from "../lib/db/assetRepo";
 import { LIMITS, UploadError, validateUpload } from "../lib/content/validate";
 import { deleteAssetObjects, deleteVersionObjects, readAssetFile, readOriginalZip, storeVersion } from "../lib/content/store";
 import { panelPage } from "./adminView";
@@ -231,6 +231,29 @@ admin.post("/admin/assets/delete", async (c) => {
     await deleteAssetObjects(c.env.ASSETS, slug); // then objects; a partial R2 failure leaves only unreferenced garbage
   } catch (e) {
     return panelError(c, e instanceof Error ? e.message : "failed", 500);
+  }
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/public", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
+  await setPublic(c.env.DB, slug, form.get("public") === "1"); // checkbox absent ⇒ make private
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/alias", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
+  const alias = String(form.get("alias") ?? "").trim();
+  try {
+    await setAlias(c.env.DB, slug, alias === "" ? null : alias);
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "invalid alias");
   }
   return renderPanel(c);
 });

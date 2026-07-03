@@ -10,6 +10,7 @@ import { servesTraffic } from "../lib/envgate";
 import { badShapeLimitOk, gateLimitOk } from "../lib/ratelimit";
 import { activeVersion, publicAssetBySlug } from "../lib/db/assetRepo";
 import { readAssetFile } from "../lib/content/store";
+import { servePublicFile } from "./publicAsset";
 
 export const gate = new Hono<{ Bindings: Env }>();
 
@@ -120,9 +121,9 @@ gate.get("/a/:slug/*", async (c) => {
   }
   if (path === "") path = "index.html"; // /a/<slug>/ IS the document URL (trailing-slash canon.)
 
-  // Public asset: serve without any cookie.
+  // Public asset: serve without any cookie (shared helper — same as the alias routes).
   const pub = await publicAssetBySlug(c.env.DB, slug).catch(() => null);
-  if (pub) return serveFile(c.env, slug, pub.active_version, path);
+  if (pub) return servePublicFile(c.env, slug, pub.active_version, path);
 
   const claims = (() => {
     const token = getCookie(c, cookieName(slug));

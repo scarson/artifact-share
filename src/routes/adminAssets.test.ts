@@ -85,3 +85,17 @@ test("asset mutations enforce CSRF and admin auth like every other admin mutatio
   const unauth = await app.request("/admin/assets", { method: "POST", headers: { origin: BASE }, body: new FormData() }, env);
   expect(await unauth.text()).toContain("invalid or has expired");
 });
+
+test("public toggle + alias via POST; reserved alias rejected; CSRF enforced", async () => {
+  await upload("/admin/assets", { title: "pub" }, { name: "a.html", bytes: HTML });
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  await ap({ slug, public: "1" }, "/admin/assets/public");
+  expect((await env.DB.prepare("SELECT is_public FROM assets").first<{ is_public: number }>())!.is_public).toBe(1);
+  await ap({ slug, alias: "docs" }, "/admin/assets/alias");
+  expect((await env.DB.prepare("SELECT public_alias FROM assets").first<{ public_alias: string }>())!.public_alias).toBe("docs");
+  const bad = await ap({ slug, alias: "admin" }, "/admin/assets/alias"); // reserved
+  expect(bad.status).toBe(400);
+  expect((await env.DB.prepare("SELECT public_alias FROM assets").first<{ public_alias: string }>())!.public_alias).toBe("docs"); // unchanged
+  const forged = await app.request("/admin/assets/public", { method: "POST", headers: { origin: "https://evil.example" }, body: new URLSearchParams({ slug, public: "1" }).toString() }, AUTH);
+  expect(forged.status).toBe(403);
+});

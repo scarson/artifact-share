@@ -40,7 +40,7 @@ ${assets.length > 0
 </form>
 <div class="table-scroll">
 <table>
-  <thead><tr><th>Title</th><th>Slug</th><th>Active</th><th>Versions</th><th></th></tr></thead>
+  <thead><tr><th>Title</th><th>Slug</th><th>Active</th><th>Versions</th><th>Access</th><th></th></tr></thead>
   <tbody>
     ${assets.map((a) => html`<tr>
       <td>${a.title}</td>
@@ -51,6 +51,11 @@ ${assets.length > 0
         <a class="revoke dl" href="/admin/assets/download?slug=${a.slug}&v=${v.version}">Download</a>
         ${v.version !== a.active_version ? html`<form method="post" action="/admin/assets/delete-version"><input type="hidden" name="slug" value="${a.slug}"><input type="hidden" name="version" value="${v.version}"><button type="submit" class="revoke">Delete</button></form>` : ""}
       </span>`)}</td>
+      <td class="access">
+        <form method="post" action="/admin/assets/public"><input type="hidden" name="slug" value="${a.slug}"><label><input type="checkbox" name="public" value="1" ${a.is_public === 1 ? "checked" : ""}> public</label><button type="submit" class="revoke">Apply</button></form>
+        <form method="post" action="/admin/assets/alias"><input type="hidden" name="slug" value="${a.slug}"><input name="alias" value="${a.public_alias ?? ""}" placeholder="alias" size="10"><button type="submit" class="revoke">Set</button></form>
+        ${a.is_public === 1 && a.public_alias ? html`<span class="muted served">/${a.public_alias}</span>` : ""}
+      </td>
       <td><form method="post" action="/admin/assets/delete" class="del"><input type="hidden" name="slug" value="${a.slug}"><label><input type="checkbox" name="confirm" value="1"> sure?</label><button type="submit" class="revoke">Delete asset</button></form></td>
     </tr>`)}
   </tbody>

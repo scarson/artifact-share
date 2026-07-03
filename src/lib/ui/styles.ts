@@ -137,6 +137,11 @@ transition:border-color .15s ease,color .15s ease}
 a.dl:hover{border-color:var(--seal);color:var(--seal-text)}
 .del{display:flex;align-items:center;gap:.5rem;justify-content:flex-end}
 .del label{display:flex;align-items:center;gap:.25rem;font-size:.75rem;color:var(--muted);white-space:nowrap}
+.access{display:flex;flex-direction:column;gap:.375rem;min-width:11rem}
+.access form{display:flex;align-items:center;gap:.375rem}
+.access label{display:flex;align-items:center;gap:.25rem;font-size:.8125rem;color:var(--muted)}
+.access input[name="alias"]{height:2rem;font-size:.8125rem;flex:1;min-width:0}
+.access .served{font-size:.75rem}
 @media (max-width:720px){.generate{grid-template-columns:1fr 1fr}
 .generate .primary{grid-column:1/-1;justify-self:start;padding:0 1.5rem}}
 @media (max-width:460px){.generate{grid-template-columns:1fr}}`;
