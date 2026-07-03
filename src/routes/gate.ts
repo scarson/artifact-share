@@ -8,27 +8,41 @@ import { hashCode, isValidSlug } from "../lib/codes";
 import { parseKeyRing, signAssetToken, verifyAssetToken } from "../lib/crypto/tokens";
 import { servesTraffic } from "../lib/envgate";
 import { badShapeLimitOk, gateLimitOk } from "../lib/ratelimit";
-import { activeVersion, publicAssetBySlug } from "../lib/db/assetRepo";
+import { activeVersionEntry, publicAssetBySlug } from "../lib/db/assetRepo";
 import { readAssetFile } from "../lib/content/store";
+import { isInlineType } from "../lib/content/validate";
 import { servePublicFile } from "./publicAsset";
 
 export const gate = new Hono<{ Bindings: Env }>();
 
 const cookieName = (slug: string) => `asset_access_${slug}`;
 
-/** Stream one file of an asset version with the right content type + asset CSP for HTML. Fail
- *  closed: a miss/error is the generic page. `integrityCodeId` set ⇒ a missing index.html is an
- *  integrity failure (valid auth, active version, but the object is gone — spec §13), logged. */
-async function serveFile(env: Env, slug: string, version: number, path: string, integrityCodeId?: string): Promise<Response> {
+/** Stream one file of an asset version. Fail closed: a miss/error is the generic page. When
+ *  `integrity` is set (path === the version's document entry), a missing object is an integrity
+ *  failure (valid auth, active version, object gone — spec §13), logged. HTML gets ASSET_CSP;
+ *  every other type falls to the finalizing middleware's restrictive default (so an inline SVG
+ *  can't run script). Non-inline types (zip, octet-stream, csv) download; renderable types inline. */
+async function serveFile(env: Env, slug: string, version: number, path: string, integrity?: { codeId: string; entry: string }): Promise<Response> {
   const obj = await readAssetFile(env.ASSETS, slug, version, path).catch(() => null);
   if (!obj) {
-    if (path === "index.html" && integrityCodeId !== undefined) {
-      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version, codeId: integrityCodeId }));
+    if (integrity && path === integrity.entry) {
+      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version, codeId: integrity.codeId }));
     }
     return failurePage();
   }
-  const headers = new Headers({ "content-type": obj.httpMetadata?.contentType ?? "application/octet-stream" });
-  if (obj.httpMetadata?.contentType?.startsWith("text/html")) headers.set("content-security-policy", ASSET_CSP);
+  return fileResponse(obj, path);
+}
+
+/** Response for a served R2 object: content-type, CSP-for-HTML, and inline-vs-attachment. Shared
+ *  by the gated and public serve paths so single-file downloads behave identically either way. */
+export function fileResponse(obj: R2ObjectBody, path: string): Response {
+  const ct = obj.httpMetadata?.contentType ?? "application/octet-stream";
+  const headers = new Headers({ "content-type": ct });
+  if (ct.startsWith("text/html")) headers.set("content-security-policy", ASSET_CSP);
+  if (!isInlineType(ct)) {
+    const name = path.slice(path.lastIndexOf("/") + 1) || "download";
+    headers.set("content-disposition", `attachment; filename="${name.replace(/["\\]/g, "_")}"`);
+  }
   return new Response(obj.body, { status: 200, headers });
 }
 
@@ -65,10 +79,10 @@ gate.get("/a/:slug", async (c) => {
     // Integrity check AFTER the constant-work redeem, NEVER before it (a pre-redeem check would
     // fail unknown slugs faster than wrong codes — the §6 timing oracle). Valid code whose active
     // version's index.html is missing from R2 is an integrity failure (spec §13): alert, no cookie.
-    const v = await activeVersion(c.env.DB, slug).catch(() => null);
-    if (v === null) return failurePage(); // unpublished/unknown ⇒ silent generic page
-    if ((await c.env.ASSETS.head(`a/${slug}/${v}/index.html`)) === null) {
-      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version: v, codeId: res.codeId }));
+    const av = await activeVersionEntry(c.env.DB, slug).catch(() => null);
+    if (av === null) return failurePage(); // unpublished/unknown ⇒ silent generic page
+    if ((await c.env.ASSETS.head(`a/${slug}/${av.version}/${av.entry}`)) === null) {
+      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version: av.version, codeId: res.codeId }));
       return failurePage();
     }
     const token = await signAssetToken(
@@ -119,11 +133,11 @@ gate.get("/a/:slug/*", async (c) => {
   } catch {
     return failurePage(); // malformed %-encoding is the generic page, never a 500
   }
-  if (path === "") path = "index.html"; // /a/<slug>/ IS the document URL (trailing-slash canon.)
+  const emptyTail = path === "";
 
   // Public asset: serve without any cookie (shared helper — same as the alias routes).
   const pub = await publicAssetBySlug(c.env.DB, slug).catch(() => null);
-  if (pub) return servePublicFile(c.env, slug, pub.active_version, path);
+  if (pub) return servePublicFile(c.env, slug, pub.active_version, emptyTail ? pub.entry : path);
 
   const claims = (() => {
     const token = getCookie(c, cookieName(slug));
@@ -135,7 +149,8 @@ gate.get("/a/:slug/*", async (c) => {
     return failurePage();
   }
   if (!(await recheck(c.env.DB, resolved.codeId, slug))) return failurePage(); // instant revoke
-  const v = await activeVersion(c.env.DB, slug).catch(() => null);
-  if (v === null) return failurePage();
-  return serveFile(c.env, slug, v, path, resolved.codeId);
+  const av = await activeVersionEntry(c.env.DB, slug).catch(() => null);
+  if (av === null) return failurePage();
+  const target = emptyTail ? av.entry : path; // /a/<slug>/ serves the document entry (any type)
+  return serveFile(c.env, slug, av.version, target, { codeId: resolved.codeId, entry: av.entry });
 });

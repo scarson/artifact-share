@@ -133,6 +133,7 @@ input[type="checkbox"]{width:auto;height:auto;accent-color:var(--seal)}
 margin:0;height:2.75rem}
 .versions{display:flex;flex-wrap:wrap;gap:.75rem;max-width:22rem}
 .ver{display:inline-flex;align-items:center;gap:.375rem;white-space:nowrap}
+.ver .kind{color:var(--faint);font-size:.75rem}
 .ver form{display:inline}
 a.dl{display:inline-block;padding:.3125rem .75rem;border:1px solid var(--line);border-radius:.5rem;
 color:var(--ink);font-size:.8125rem;text-decoration:none;

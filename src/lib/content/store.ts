@@ -42,6 +42,12 @@ export async function readOriginalZip(bucket: R2Bucket, slug: string, version: n
   return await bucket.get(origKey(slug, version));
 }
 
+/** Keep an original zip under orig/ (outside the gate-served tree) so an unpacked bundle can still
+ *  be downloaded as its source archive. */
+export async function preserveOriginalZip(bucket: R2Bucket, slug: string, version: number, zip: Uint8Array): Promise<void> {
+  await bucket.put(origKey(slug, version), zip, { httpMetadata: { contentType: "application/zip" } });
+}
+
 async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<void> {
   let cursor: string | undefined;
   do {

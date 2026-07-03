@@ -26,7 +26,7 @@ function assetsSection(assets: Assets) {
 <h2>Assets</h2>
 <form method="post" action="/admin/assets" enctype="multipart/form-data" class="generate">
   <div class="field"><label for="a-title">Title</label><input id="a-title" name="title" placeholder="e.g. Q3 Board Deck"></div>
-  <div class="field"><label for="a-file">File <span class="hint">· .html or .zip bundle</span></label><input id="a-file" name="file" type="file" accept=".html,.htm,.zip"></div>
+  <div class="field"><label for="a-file">File <span class="hint">· any type; .zip can be unpacked</span></label><input id="a-file" name="file" type="file"></div>
   <button type="submit" class="primary">Upload new asset</button>
 </form>
 ${assets.length > 0
@@ -34,7 +34,7 @@ ${assets.length > 0
   <div class="field"><label for="v-slug">New version of</label><select id="v-slug" name="slug">
     ${assets.map((a) => html`<option value="${a.slug}">${a.title} (${a.slug})</option>`)}
   </select></div>
-  <div class="field"><label for="v-file">File</label><input id="v-file" name="file" type="file" accept=".html,.htm,.zip"></div>
+  <div class="field"><label for="v-file">File</label><input id="v-file" name="file" type="file"></div>
   <div class="field check"><label><input type="checkbox" name="draft" value="1"> Upload as draft — don't activate</label></div>
   <button type="submit" class="primary">Upload version</button>
 </form>
@@ -47,7 +47,9 @@ ${assets.length > 0
       <td><code>${a.slug}</code></td>
       <td>${a.active_version !== null ? html`v${a.active_version}` : html`<span class="muted">unpublished</span>`}</td>
       <td class="versions">${a.versions.map((v) => html`<span class="ver">v${v.version}
+        <span class="kind">${(v.entry ?? "index.html") === "index.html" ? `bundle · ${v.file_count} file${v.file_count === 1 ? "" : "s"}` : v.entry}</span>
         ${v.version !== a.active_version ? html`<form method="post" action="/admin/assets/activate"><input type="hidden" name="slug" value="${a.slug}"><input type="hidden" name="version" value="${v.version}"><button type="submit" class="revoke">Activate</button></form>` : ""}
+        ${(v.entry ?? "").toLowerCase().endsWith(".zip") ? html`<form method="post" action="/admin/assets/unpack"><input type="hidden" name="slug" value="${a.slug}"><input type="hidden" name="version" value="${v.version}"><button type="submit" class="revoke" title="Unpack this zip into a browsable bundle (only if it has a root index.html)">Unpack</button></form>` : ""}
         <a class="revoke dl" href="/admin/assets/download?slug=${a.slug}&v=${v.version}">Download</a>
         ${v.version !== a.active_version ? html`<form method="post" action="/admin/assets/delete-version"><input type="hidden" name="slug" value="${a.slug}"><input type="hidden" name="version" value="${v.version}"><button type="submit" class="revoke">Delete</button></form>` : ""}
       </span>`)}</td>

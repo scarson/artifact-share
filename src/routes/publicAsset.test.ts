@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, expect, test } from "vitest";
 import app from "../index";
 import { FIXTURE_SLUG, seedFixtureAsset } from "../test/seedAsset";
-import { setAlias, setPublic } from "../lib/db/assetRepo";
+import { recordVersion, setAlias, setPublic } from "../lib/db/assetRepo";
 
 beforeEach(() => seedFixtureAsset());
 
@@ -81,4 +81,28 @@ test("fixed routes always win over aliases (defense in depth beyond reserved-nam
   await seedPublic("about");
   expect(await (await app.request("/robots.txt", {}, env)).text()).toContain("Disallow");
   expect((await app.request("/", {}, env)).status).toBe(200); // root identity page, not an asset
+});
+
+// Seed a single-file public asset (any type) at version 2 and activate it.
+async function seedSingleFile(entry: string, contentType: string, bytes = "data") {
+  await env.ASSETS.put(`a/${FIXTURE_SLUG}/2/${entry}`, bytes, { httpMetadata: { contentType } });
+  await recordVersion(env.DB, FIXTURE_SLUG, 2, 1, bytes.length, true, entry);
+  await setPublic(env.DB, FIXTURE_SLUG, true);
+}
+
+test("single-file public asset: a PDF serves inline with its content-type at /a/<slug>/", async () => {
+  await seedSingleFile("q3.pdf", "application/pdf", "%PDF-1.4");
+  const res = await app.request(`/a/${FIXTURE_SLUG}/`, {}, env);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toBe("application/pdf");
+  expect(res.headers.get("content-disposition")).toBeNull(); // inline (renderable)
+});
+
+test("single-file public asset: a non-renderable type serves as an attachment download", async () => {
+  await seedSingleFile("data.zip", "application/zip", "PKZIP");
+  const res = await app.request(`/a/${FIXTURE_SLUG}/`, {}, env);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toBe("application/zip");
+  expect(res.headers.get("content-disposition")).toContain("attachment");
+  expect(res.headers.get("content-disposition")).toContain("data.zip");
 });
