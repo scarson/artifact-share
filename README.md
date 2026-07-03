@@ -11,7 +11,7 @@ Once deployed, the site explains its own architecture at [`/about`](docs/assets-
 A share link is `/a/<slug>?code=<code>`. Opening it:
 
 1. Validates the slug's shape before any database access.
-2. Redeems the code in one atomic D1 statement — hash, check validity/expiry/revocation, and stamp the redemption together.
+2. Redeems the code in one atomic D1 statement that hashes it, checks validity, expiry, and revocation, and stamps the redemption together.
 3. Sets a signed, HttpOnly cookie scoped to that document and redirects to a clean URL with the code stripped.
 4. Re-checks the code in D1 on every later request. The cookie is a convenience, never the authority.
 5. Streams the document from the private R2 bucket.
@@ -50,21 +50,21 @@ npm run lint-config   # structural config lints (run in CI before deploy)
 
 CI (`.github/workflows/deploy.yml`) drives deploys: a push to `dev` deploys the preview Worker, and a merge to `main` deploys production. The deploy job applies D1 migrations before uploading the Worker. Manual `wrangler deploy` is the emergency path only.
 
-Setup — Cloudflare account bindings, secrets, R2 buckets, and Cloudflare Access — is documented in [`docs/deploy/SETUP.md`](docs/deploy/SETUP.md).
+[`docs/deploy/SETUP.md`](docs/deploy/SETUP.md) covers the Cloudflare account setup: bindings, secrets, R2 buckets, and Cloudflare Access.
 
 ## Documentation
 
-- [`docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md`](docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md) — the specification (code comments reference its section numbers).
-- [`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md`](docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md) — the R2 asset manager and recoverable codes.
-- [`docs/pitfalls/`](docs/pitfalls/) — read before changing code.
-- [`docs/git-strategy.md`](docs/git-strategy.md) — branch and worktree conventions.
-- [`CLAUDE.md`](CLAUDE.md) — working conventions for coding agents.
+- [`docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md`](docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md): the specification (code comments reference its section numbers).
+- [`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md`](docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md): the R2 asset manager and recoverable codes.
+- [`docs/pitfalls/`](docs/pitfalls/): read before changing code.
+- [`docs/git-strategy.md`](docs/git-strategy.md): branch and worktree conventions.
+- [`CLAUDE.md`](CLAUDE.md): working conventions for coding agents.
 
 ## Security posture
 
 - Every failure returns one byte-identical page with identical headers.
 - Authorization is re-checked in the database on every request; revocation is immediate.
-- The R2 bucket has no public URL — content is reachable only through the Worker, only after the checks above.
+- The R2 bucket has no public URL; the Worker is the only way to reach the content, and only after the checks above.
 - D1 is the single source of time; expiry and revocation are computed in SQL, never from a client clock.
 - Admin pages carry a strict, hash-pinned Content-Security-Policy with no `unsafe-inline`.
 - The Worker never serves a static surface: it has no `assets` config, and the build lints against one.
