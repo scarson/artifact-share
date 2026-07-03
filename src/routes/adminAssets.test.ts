@@ -30,18 +30,40 @@ test("upload single html → asset created, v1 active, appears in panel with tit
   expect(a!.active_version).toBe(1);
 });
 
-test("upload zip bundle → files stored under a/<slug>/1/, original under orig/", async () => {
+test("a zip uploads as a single .zip file (NOT auto-unpacked); Unpack converts a bundle-capable one", async () => {
   await upload("/admin/assets", { title: "Bundle" }, { name: "b.zip", bytes: zipSync({ "index.html": HTML, "app.css": strToU8("body{}") }) });
   const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  // Default: the zip is one downloadable object; NOT unpacked.
+  expect(await env.ASSETS.get(`a/${slug}/1/b.zip`)).not.toBeNull();
+  expect(await env.ASSETS.get(`a/${slug}/1/app.css`)).toBeNull();
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("b.zip");
+  // Unpack → files under a/, original preserved under orig/, entry flips to index.html.
+  await ap({ slug, version: "1" }, "/admin/assets/unpack");
   expect(await env.ASSETS.get(`a/${slug}/1/app.css`)).not.toBeNull();
+  expect(await env.ASSETS.get(`a/${slug}/1/b.zip`)).toBeNull();
   expect(await env.ASSETS.get(`orig/${slug}/1.zip`)).not.toBeNull();
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("index.html");
 });
 
-test("invalid upload (no index.html in zip) → 400 with the validator's message, nothing persisted", async () => {
-  const res = await upload("/admin/assets", { title: "bad" }, { name: "b.zip", bytes: zipSync({ "readme.txt": HTML }) });
-  expect(res.status).toBe(400);
-  expect(await res.text()).toContain("index.html");
-  expect(await env.DB.prepare("SELECT count(*) AS n FROM assets").first<{ n: number }>()).toMatchObject({ n: 0 });
+test("a zip WITHOUT a root index.html uploads fine as a single file; Unpack refuses it", async () => {
+  const res = await upload("/admin/assets", { title: "data" }, { name: "data.zip", bytes: zipSync({ "a.csv": strToU8("1,2"), "b.csv": strToU8("3,4") }) });
+  expect(res.status).toBe(200);
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  expect(await env.ASSETS.get(`a/${slug}/1/data.zip`)).not.toBeNull();
+  const unpack = await ap({ slug, version: "1" }, "/admin/assets/unpack");
+  expect(unpack.status).toBe(400);
+  expect(await unpack.text()).toContain("index.html");
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("data.zip"); // unchanged
+});
+
+test("any file type is a single-file asset (PDF stored + served inline with its content type)", async () => {
+  const res = await upload("/admin/assets", { title: "Report" }, { name: "q3.pdf", bytes: strToU8("%PDF-1.4 fake") });
+  expect(res.status).toBe(200);
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  const obj = await env.ASSETS.get(`a/${slug}/1/q3.pdf`);
+  expect(obj).not.toBeNull();
+  expect(obj!.httpMetadata?.contentType).toBe("application/pdf");
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("q3.pdf");
 });
 
 test("new version + activate/rollback + download + delete flows", async () => {
@@ -98,4 +120,18 @@ test("public toggle + alias via POST; reserved alias rejected; CSRF enforced", a
   expect((await env.DB.prepare("SELECT public_alias FROM assets").first<{ public_alias: string }>())!.public_alias).toBe("docs"); // unchanged
   const forged = await app.request("/admin/assets/public", { method: "POST", headers: { origin: "https://evil.example" }, body: new URLSearchParams({ slug, public: "1" }).toString() }, AUTH);
   expect(forged.status).toBe(403);
+});
+
+test("Unpack is idempotent/self-healing — re-running after files exist re-derives from the preserved original", async () => {
+  await upload("/admin/assets", { title: "Site" }, { name: "s.zip", bytes: zipSync({ "index.html": HTML, "app.css": strToU8("body{}") }) });
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  expect((await ap({ slug, version: "1" }, "/admin/assets/unpack")).status).toBe(200);
+  expect(await env.ASSETS.get(`orig/${slug}/1.zip`)).not.toBeNull(); // original preserved for download + re-heal
+  // Simulate the post-unpack state where the entry .zip is gone (it was cleared) and unpack is
+  // triggered again: it must succeed by re-reading orig/, not fail with "nothing to unpack".
+  await env.DB.prepare("UPDATE asset_versions SET entry = 's.zip' WHERE slug = ?1").bind(slug).run();
+  const again = await ap({ slug, version: "1" }, "/admin/assets/unpack");
+  expect(again.status).toBe(200);
+  expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("index.html");
+  expect(await env.ASSETS.get(`a/${slug}/1/app.css`)).not.toBeNull();
 });

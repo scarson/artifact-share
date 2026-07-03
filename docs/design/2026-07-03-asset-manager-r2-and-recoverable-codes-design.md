@@ -217,6 +217,28 @@ An optional **`public_alias`** gives a public asset a friendly route: `GET /<ali
 First consumer: the **architecture explainer** (`/about`) — a fun single-page HTML asset
 describing how this app works, uploaded as a public asset with alias `about`.
 
+## Part D — general file sharing (owner-requested 2026-07-04)
+
+R2 made this a general file host, not an HTML-only one. Formalized:
+
+- **Any file type is a single-file asset.** Upload a PDF, image, CSV, or arbitrary file; it becomes
+  an asset served at `/a/<slug>/` (and `/<alias>/`) with its content-type. Known extensions map to
+  their type; unknown extensions serve as `application/octet-stream`. Browser-renderable types
+  (html, pdf, png/jpg/gif/webp/avif, svg, txt) serve **inline** (`content-disposition: inline`);
+  everything else serves as an **attachment** download. Only `text/html` gets `ASSET_CSP`; every
+  other type falls to the finalizing middleware's restrictive default CSP, so an inline SVG cannot
+  run script (defense in depth on top of the trusted-admin-upload boundary).
+- **Zips default to a single-file download.** A zip is stored as one downloadable `.zip` (entry =
+  `<name>.zip`), never auto-unpacked. If it contains a root `index.html`, the asset shows a
+  persistent **Unpack as browsable bundle** action (owner's chosen confirmation mechanism, decline
+  = do nothing). Unpacking reads the retained `orig/<v>.zip`, clears the version prefix, writes the
+  files, and flips the version's entry to `index.html`. Not clicking leaves it a single zip.
+- **Data model:** `asset_versions.entry TEXT` (migration 0005) — the object served as the document
+  (`index.html` for bundles, the filename for single files). NULL on legacy rows means
+  `index.html`.
+- Unchanged: the gate re-check, revocation, public toggle, versioning, and byte-identical failure
+  parity all apply regardless of asset kind.
+
 ## 4. Self-answered open questions
 
 | Question | Answer | Why |

@@ -7,9 +7,9 @@ import { originOk } from "../lib/http/csrf";
 import { verifyAccessToken } from "../lib/auth/cfaccess";
 import { createCode, getCodeEnc, listCodes, revokeCode, type ExpirySpec } from "../lib/db/adminRepo";
 import { decryptCode } from "../lib/vault";
-import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion, setAlias, setPublic } from "../lib/db/assetRepo";
-import { LIMITS, UploadError, validateUpload } from "../lib/content/validate";
-import { deleteAssetObjects, deleteVersionObjects, readAssetFile, readOriginalZip, storeVersion } from "../lib/content/store";
+import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion, setAlias, setPublic, updateVersionEntry, versionEntry } from "../lib/db/assetRepo";
+import { LIMITS, UploadError, extractBundle, prepareUpload } from "../lib/content/validate";
+import { deleteAssetObjects, deleteVersionObjects, preserveOriginalZip, readAssetFile, readOriginalZip, storeVersion } from "../lib/content/store";
 import { panelPage } from "./adminView";
 
 export const admin = new Hono<{ Bindings: Env }>();
@@ -143,27 +143,36 @@ admin.post("/admin/show", async (c) => {
   return renderPanel(c, { link });
 });
 
+/** workers-types types FormData.get as string|null, but a multipart file field arrives as File at
+ *  runtime. Assert the runtime union, then narrow to a non-empty File or null. */
+function formFile(form: FormData): File | null {
+  const f = form.get("file") as unknown as File | string | null;
+  return typeof f === "string" || f === null || f.size === 0 ? null : f;
+}
+
+/** Store an uploaded file as a single object (design Part D): any type is stored whole and served
+ *  at the version's document URL; a zip is stored as a single .zip download (never auto-unpacked —
+ *  the Unpack action converts a bundle-capable one on request). Returns the entry filename. */
+async function storeUploadedFile(env: Env, slug: string, version: number, file: File): Promise<string> {
+  const data = new Uint8Array(await file.arrayBuffer());
+  const prepared = prepareUpload(file.name, data); // throws UploadError on empty/oversize
+  await storeVersion(env.ASSETS, slug, version, [{ path: prepared.entry, bytes: prepared.bytes, contentType: prepared.contentType }], null);
+  return prepared.entry;
+}
+
 admin.post("/admin/assets", async (c) => {
   if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
   const form = await c.req.formData();
   const title = String(form.get("title") ?? "").trim();
-  // workers-types types FormData.get as string|null, but multipart file fields arrive as File at
-  // runtime — assert the runtime union, then narrow.
-  const file = form.get("file") as unknown as File | string | null;
-  if (!title || typeof file === "string" || file === null || file.size === 0) return panelError(c, "title and file are required");
+  const file = formFile(form);
+  if (!title || !file) return panelError(c, "title and file are required");
   if (file.size > LIMITS.uploadBytes) return panelError(c, "file too large");
-  const data = new Uint8Array(await file.arrayBuffer()); // read ONCE; doubles as the orig-zip bytes
-  let validated: ReturnType<typeof validateUpload>;
-  try {
-    validated = validateUpload(file.name, data);
-  } catch (e) {
-    return panelError(c, e instanceof UploadError ? e.message : "invalid upload");
-  }
   try {
     const slug = await createAsset(c.env.DB, title);
-    await storeVersion(c.env.ASSETS, slug, 1, validated.files, validated.isBundle ? data : null);
-    await recordVersion(c.env.DB, slug, 1, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), true);
+    const entry = await storeUploadedFile(c.env, slug, 1, file);
+    await recordVersion(c.env.DB, slug, 1, 1, file.size, true, entry);
   } catch (e) {
+    if (e instanceof UploadError) return panelError(c, e.message);
     return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
   }
   return renderPanel(c);
@@ -174,23 +183,51 @@ admin.post("/admin/assets/version", async (c) => {
   const form = await c.req.formData();
   const slug = String(form.get("slug") ?? "");
   if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
-  const file = form.get("file") as unknown as File | string | null; // see the runtime-union note above
-  if (typeof file === "string" || file === null || file.size === 0) return panelError(c, "file is required");
+  const file = formFile(form);
+  if (!file) return panelError(c, "file is required");
   if (file.size > LIMITS.uploadBytes) return panelError(c, "file too large");
-  const data = new Uint8Array(await file.arrayBuffer());
-  let validated: ReturnType<typeof validateUpload>;
-  try {
-    validated = validateUpload(file.name, data);
-  } catch (e) {
-    return panelError(c, e instanceof UploadError ? e.message : "invalid upload");
-  }
   try {
     const version = await nextVersion(c.env.DB, slug);
-    await storeVersion(c.env.ASSETS, slug, version, validated.files, validated.isBundle ? data : null);
+    const entry = await storeUploadedFile(c.env, slug, version, file);
     // Checkbox absence is meaningful: no `draft` field ⇒ activate immediately.
-    await recordVersion(c.env.DB, slug, version, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), form.get("draft") !== "1");
+    await recordVersion(c.env.DB, slug, version, 1, file.size, form.get("draft") !== "1", entry);
   } catch (e) {
+    if (e instanceof UploadError) return panelError(c, e.message);
     return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
+  }
+  return renderPanel(c);
+});
+
+// Unpack a single-file .zip version into a browsable bundle (design Part D — the persistent
+// confirmation the admin opts into; declining is simply not clicking). Reads the stored .zip,
+// validates it as a bundle, preserves the original under orig/ for download, rewrites the version
+// prefix with the unpacked files, and repoints the version's entry to index.html.
+admin.post("/admin/assets/unpack", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  const version = Number(form.get("version"));
+  const entry = await versionEntry(c.env.DB, slug, version);
+  if (entry === null) return panelError(c, "unknown version");
+  // Source the zip from orig/ FIRST, falling back to the stored entry. orig/ is written before the
+  // destructive store below, so a re-run after a partial failure (files written, entry not yet
+  // repointed) self-heals instead of dead-ending at "nothing to unpack".
+  const src = (await readOriginalZip(c.env.ASSETS, slug, version).catch(() => null))
+    ?? (await readAssetFile(c.env.ASSETS, slug, version, entry).catch(() => null));
+  if (!src) return panelError(c, "nothing to unpack");
+  const zipBytes = new Uint8Array(await src.arrayBuffer());
+  let files: ReturnType<typeof extractBundle>;
+  try {
+    files = extractBundle(zipBytes);
+  } catch (e) {
+    return panelError(c, e instanceof UploadError ? e.message : "not a browsable bundle");
+  }
+  try {
+    await preserveOriginalZip(c.env.ASSETS, slug, version, zipBytes); // keep for Download + re-heal, BEFORE the clean-slate store
+    await storeVersion(c.env.ASSETS, slug, version, files, null);     // clears the .zip, writes files
+    await updateVersionEntry(c.env.DB, slug, version, "index.html", files.length, files.reduce((n, f) => n + f.bytes.length, 0));
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "unpack failed", 500);
   }
   return renderPanel(c);
 });
@@ -258,16 +295,23 @@ admin.post("/admin/assets/alias", async (c) => {
   return renderPanel(c);
 });
 
-// Admin-only download (GET, read-only — no originOk): bundles stream the preserved original zip
-// from orig/ (outside the gate-served tree); single-file assets stream the index.html.
+// Admin-only download (GET, read-only — no originOk): an UNPACKED bundle streams the preserved
+// original zip from orig/; any other asset streams its document entry (the single file, or the
+// index.html of a non-unpacked upload). Always an attachment.
 admin.get("/admin/assets/download", async (c) => {
   const slug = c.req.query("slug") ?? "";
   const v = Number(c.req.query("v") ?? NaN) || (await activeVersion(c.env.DB, slug));
   if (!v) return failurePage();
   const orig = await readOriginalZip(c.env.ASSETS, slug, v);
-  const body = orig ?? (await readAssetFile(c.env.ASSETS, slug, v, "index.html"));
-  if (!body) return failurePage();
-  c.header("content-type", orig ? "application/zip" : "text/html; charset=utf-8");
-  c.header("content-disposition", `attachment; filename="${slug}-v${v}${orig ? ".zip" : ".html"}"`);
+  if (orig) {
+    c.header("content-type", "application/zip");
+    c.header("content-disposition", `attachment; filename="${slug}-v${v}.zip"`);
+    return c.body(orig.body);
+  }
+  const entry = await versionEntry(c.env.DB, slug, v);
+  const body = entry ? await readAssetFile(c.env.ASSETS, slug, v, entry) : null;
+  if (!body || !entry) return failurePage();
+  c.header("content-type", body.httpMetadata?.contentType ?? "application/octet-stream");
+  c.header("content-disposition", `attachment; filename="${slug}-v${v}-${entry.replace(/["\\]/g, "_")}"`);
   return c.body(body.body);
 });

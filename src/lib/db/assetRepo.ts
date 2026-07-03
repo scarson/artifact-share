@@ -3,7 +3,7 @@
  *  them. All reads used by the gate fail closed via null. */
 import { generateSlug } from "../codes";
 
-export interface AssetVersionRow { slug: string; version: number; created_at: number; file_count: number; total_bytes: number }
+export interface AssetVersionRow { slug: string; version: number; created_at: number; file_count: number; total_bytes: number; entry: string | null }
 export interface AssetRow { slug: string; title: string; active_version: number | null; is_public: number; public_alias: string | null; created_at: number; updated_at: number }
 
 export async function createAsset(db: D1Database, title: string, gen: () => string = generateSlug): Promise<string> {
@@ -29,6 +29,27 @@ export async function activeVersion(db: D1Database, slug: string): Promise<numbe
   return row ? row.active_version : null; // missing asset and unpublished asset both ⇒ null (fail closed)
 }
 
+/** The active version number AND the object to serve as its document (entry; NULL ⇒ 'index.html'
+ *  for legacy rows). One indexed join; null when unknown or unpublished (fail closed). */
+export async function activeVersionEntry(db: D1Database, slug: string): Promise<{ version: number; entry: string } | null> {
+  const row = await db.prepare(
+    "SELECT a.active_version AS version, v.entry AS entry FROM assets a JOIN asset_versions v ON v.slug = a.slug AND v.version = a.active_version WHERE a.slug = ?1",
+  ).bind(slug).first<{ version: number; entry: string | null }>();
+  return row ? { version: row.version, entry: row.entry ?? "index.html" } : null;
+}
+
+/** The entry filename of a specific version (NULL ⇒ 'index.html'); null if the version is missing. */
+export async function versionEntry(db: D1Database, slug: string, version: number): Promise<string | null> {
+  const row = await db.prepare("SELECT entry FROM asset_versions WHERE slug = ?1 AND version = ?2").bind(slug, version).first<{ entry: string | null }>();
+  return row ? (row.entry ?? "index.html") : null;
+}
+
+/** Repoint a version's entry (used by the Unpack action after it rewrites the R2 prefix). */
+export async function updateVersionEntry(db: D1Database, slug: string, version: number, entry: string, fileCount: number, totalBytes: number): Promise<void> {
+  await db.prepare("UPDATE asset_versions SET entry = ?3, file_count = ?4, total_bytes = ?5 WHERE slug = ?1 AND version = ?2")
+    .bind(slug, version, entry, fileCount, totalBytes).run();
+}
+
 export async function listAssets(db: D1Database): Promise<(AssetRow & { versions: AssetVersionRow[] })[]> {
   const assets = (await db.prepare("SELECT * FROM assets ORDER BY created_at DESC").all<AssetRow>()).results;
   const versions = (await db.prepare("SELECT * FROM asset_versions ORDER BY version DESC").all<AssetVersionRow>()).results;
@@ -41,9 +62,9 @@ export async function nextVersion(db: D1Database, slug: string): Promise<number>
 }
 
 /** Insert the version row and (optionally) flip the active pointer — one atomic batch. */
-export async function recordVersion(db: D1Database, slug: string, version: number, fileCount: number, totalBytes: number, activate: boolean): Promise<void> {
+export async function recordVersion(db: D1Database, slug: string, version: number, fileCount: number, totalBytes: number, activate: boolean, entry: string): Promise<void> {
   const stmts = [
-    db.prepare("INSERT INTO asset_versions (slug, version, file_count, total_bytes) VALUES (?1, ?2, ?3, ?4)").bind(slug, version, fileCount, totalBytes),
+    db.prepare("INSERT INTO asset_versions (slug, version, file_count, total_bytes, entry) VALUES (?1, ?2, ?3, ?4, ?5)").bind(slug, version, fileCount, totalBytes, entry),
   ];
   if (activate) stmts.push(db.prepare("UPDATE assets SET active_version = ?2, updated_at = unixepoch() WHERE slug = ?1").bind(slug, version));
   await db.batch(stmts);
@@ -86,16 +107,18 @@ export async function setAlias(db: D1Database, slug: string, alias: string | nul
 }
 
 /** Public + published only — the single oracle both public serve paths use (fail closed on null). */
-export async function publicAssetBySlug(db: D1Database, slug: string): Promise<{ active_version: number } | null> {
-  return await db.prepare(
-    "SELECT active_version FROM assets WHERE slug = ?1 AND is_public = 1 AND active_version IS NOT NULL",
-  ).bind(slug).first<{ active_version: number }>();
+export async function publicAssetBySlug(db: D1Database, slug: string): Promise<{ active_version: number; entry: string } | null> {
+  const row = await db.prepare(
+    "SELECT a.active_version AS active_version, v.entry AS entry FROM assets a JOIN asset_versions v ON v.slug = a.slug AND v.version = a.active_version WHERE a.slug = ?1 AND a.is_public = 1 AND a.active_version IS NOT NULL",
+  ).bind(slug).first<{ active_version: number; entry: string | null }>();
+  return row ? { active_version: row.active_version, entry: row.entry ?? "index.html" } : null;
 }
 
-export async function publicAssetByAlias(db: D1Database, alias: string): Promise<{ slug: string; active_version: number } | null> {
-  return await db.prepare(
-    "SELECT slug, active_version FROM assets WHERE public_alias = ?1 AND is_public = 1 AND active_version IS NOT NULL",
-  ).bind(alias).first<{ slug: string; active_version: number }>();
+export async function publicAssetByAlias(db: D1Database, alias: string): Promise<{ slug: string; active_version: number; entry: string } | null> {
+  const row = await db.prepare(
+    "SELECT a.slug AS slug, a.active_version AS active_version, v.entry AS entry FROM assets a JOIN asset_versions v ON v.slug = a.slug AND v.version = a.active_version WHERE a.public_alias = ?1 AND a.is_public = 1 AND a.active_version IS NOT NULL",
+  ).bind(alias).first<{ slug: string; active_version: number; entry: string | null }>();
+  return row ? { slug: row.slug, active_version: row.active_version, entry: row.entry ?? "index.html" } : null;
 }
 
 /** Delete = kill access: revoke every code for the slug, drop version rows, drop the asset. */

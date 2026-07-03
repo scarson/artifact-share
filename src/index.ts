@@ -33,16 +33,17 @@ app.use("*", async (c, next) => {
   }
 });
 
-// Spec §9: "/" is deliberately neutral — nothing to enumerate. Owner-requested (2026-07-03): a
-// minimal identity page instead of a blank 200. It names the host and states invitation-only
-// access; no links, no listings, nothing that invites probing.
+// Spec §9: "/" stays neutral — it names the host, states invitation-only access, and links ONLY to
+// the public About page (owner-requested 2026-07-03). No private slugs, no admin mention, nothing
+// that enumerates shared content.
 app.get("/", (c) => {
   const host = displayHost(c.env.PUBLIC_ORIGIN);
   return c.html(publicPage(
     host,
     `<span class="seal" aria-hidden="true"></span>` +
       `<h1>${host}</h1>` +
-      `<p>A private space for shared work. Access is by invitation only.</p>`,
+      `<p>A private space for shared work. Access is by invitation only.</p>` +
+      `<p class="foot">Learn how it works on the <a href="/about">About page</a>.</p>`,
   ));
 });
 
