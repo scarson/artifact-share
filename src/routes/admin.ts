@@ -42,6 +42,19 @@ async function requireAdmin(c: Context<{ Bindings: Env }>, next: Next) {
 admin.use("/admin", requireAdmin);
 admin.use("/admin/*", requireAdmin);
 
+// AUTHORIZED admin responses override the global Referrer-Policy: no-referrer with same-origin.
+// Under no-referrer the browser serializes the Origin header of the panel's own same-origin form
+// POSTs as the literal "null" and omits Referer (Fetch spec), so originOk() would 403 every
+// Generate/Revoke submit. same-origin restores both signals while still sending nothing cross-origin.
+// Registered AFTER the guards: a guard short-circuit (the generic failure page) never reaches this,
+// so denied responses keep no-referrer and stay header-identical to gate failures (spec §9 parity).
+async function panelReferrerPolicy(c: Context<{ Bindings: Env }>, next: Next) {
+  await next();
+  c.res.headers.set("referrer-policy", "same-origin");
+}
+admin.use("/admin", panelReferrerPolicy);
+admin.use("/admin/*", panelReferrerPolicy);
+
 function panelPage(opts: { oneTimeLink?: string; error?: string }, codesRows: Awaited<ReturnType<typeof listCodes>>, nowSec: number) {
   const manifest = readManifest();
   const orphans = new Set(findOrphans(codesRows, manifest));

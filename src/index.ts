@@ -13,7 +13,13 @@ const app = new Hono<{ Bindings: Env }>();
 // what makes failure-vs-failure byte-parity hold by construction.
 app.use("*", async (c, next) => {
   await next();
-  for (const [k, v] of Object.entries(baseHeaders())) c.res.headers.set(k, v);
+  for (const [k, v] of Object.entries(baseHeaders())) {
+    // referrer-policy is respected-if-set (like CSP below): the authorized admin panel MUST override
+    // no-referrer to same-origin, or the browser serializes the Origin header of the panel's own
+    // same-origin form POSTs as "null" (Fetch spec) and the CSRF check rejects every submit.
+    if (k === "referrer-policy" && c.res.headers.has(k)) continue;
+    c.res.headers.set(k, v);
+  }
   if (!c.res.headers.has("content-security-policy")) {
     c.res.headers.set("content-security-policy", ADMIN_CSP);
   }

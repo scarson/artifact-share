@@ -87,3 +87,19 @@ test("CSRF on the authorized mutation: a cross-site Origin is rejected (spec §8
   const row = await env.DB.prepare("SELECT count(*) AS n FROM codes").first<{ n: number }>();
   expect(row!.n).toBe(0);
 });
+
+test("CSRF: the literal Origin \"null\" stays rejected (sandboxed iframes and no-referrer documents send it)", async () => {
+  const res = await apost("/admin/codes", { slug: SLUG, label: "x", days: "", date: "" }, { origin: "null" });
+  expect(res.status).toBe(403);
+  const row = await env.DB.prepare("SELECT count(*) AS n FROM codes").first<{ n: number }>();
+  expect(row!.n).toBe(0);
+});
+
+// The POST response re-renders the panel (one-time link + the form) — it is itself the document the
+// admin submits from next, so it needs the same Referrer-Policy carve-out as GET /admin.
+test("panel-rendering responses carry Referrer-Policy: same-origin (GET and POST alike)", async () => {
+  const get = await app.request("/admin", {}, AUTH);
+  expect(get.headers.get("referrer-policy")).toBe("same-origin");
+  const post = await apost("/admin/codes", { slug: SLUG, label: "rp", days: "", date: "" });
+  expect(post.headers.get("referrer-policy")).toBe("same-origin");
+});
