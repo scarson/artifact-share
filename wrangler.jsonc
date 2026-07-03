@@ -40,6 +40,11 @@
 			"migrations_dir": "migrations"
 		}
 	],
+	// Private R2 bucket for asset bytes (design 2026-07-03): binding-only access — the bucket must
+	// NEVER get public access, an r2.dev URL, or a custom domain. Local dev/tests are simulated.
+	"r2_buckets": [
+		{ "binding": "ASSETS", "bucket_name": "artifact-share-dev" }
+	],
 	// `secrets.required` is NOT inherited by environments, so it is declared inside each env block below
 	// (not at the top level) — a deploy to that env fails loudly if the secret is unset (spec §10).
 	"env": {
@@ -70,6 +75,9 @@
 					"database_id": "37eeeefc-880d-464f-844b-e99cb0db091a",
 					"migrations_dir": "migrations"
 				}
+			],
+			"r2_buckets": [
+				{ "binding": "ASSETS", "bucket_name": "artifact-share-preview" }
 			]
 		},
 		"production": {
@@ -110,6 +118,9 @@
 					"database_id": "220fd2d6-e467-41fb-9eed-30d96b431ebb",
 					"migrations_dir": "migrations"
 				}
+			],
+			"r2_buckets": [
+				{ "binding": "ASSETS", "bucket_name": "artifact-share-prod" }
 			]
 		}
 	}

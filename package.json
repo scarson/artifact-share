@@ -11,6 +11,7 @@
     "build-manifest": "node scripts/build-manifest.mjs"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "hono": "^4.12.27",
     "jose": "^6.2.3"
   },
