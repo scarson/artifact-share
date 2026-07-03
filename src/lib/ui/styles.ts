@@ -123,6 +123,20 @@ transition:border-color .15s ease,color .15s ease}
 .revoke:hover:not(:disabled){border-color:var(--seal);color:var(--seal-text)}
 .revoke:disabled{opacity:.4;cursor:default}
 .empty{color:var(--muted);text-align:center;padding:2.25rem 1rem}
+.generate+.generate{margin-top:1rem}
+input[type="file"]{padding:.4375rem .625rem}
+input[type="checkbox"]{width:auto;height:auto;accent-color:var(--seal)}
+.field.check label{display:flex;align-items:center;gap:.5rem;font-size:.875rem;color:var(--muted);
+margin:0;height:2.75rem}
+.versions{display:flex;flex-wrap:wrap;gap:.75rem;max-width:22rem}
+.ver{display:inline-flex;align-items:center;gap:.375rem;white-space:nowrap}
+.ver form{display:inline}
+a.dl{display:inline-block;padding:.3125rem .75rem;border:1px solid var(--line);border-radius:.5rem;
+color:var(--ink);font-size:.8125rem;text-decoration:none;
+transition:border-color .15s ease,color .15s ease}
+a.dl:hover{border-color:var(--seal);color:var(--seal-text)}
+.del{display:flex;align-items:center;gap:.5rem;justify-content:flex-end}
+.del label{display:flex;align-items:center;gap:.25rem;font-size:.75rem;color:var(--muted);white-space:nowrap}
 @media (max-width:720px){.generate{grid-template-columns:1fr 1fr}
 .generate .primary{grid-column:1/-1;justify-self:start;padding:0 1.5rem}}
 @media (max-width:460px){.generate{grid-template-columns:1fr}}`;

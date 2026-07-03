@@ -1,15 +1,16 @@
 import { Hono, type Context, type Next } from "hono";
-import { html, raw } from "hono/html";
-import { ADMIN_SCRIPT, ADMIN_STYLE, FAVICON, displayHost } from "../lib/ui/styles";
+import { displayHost } from "../lib/ui/styles";
 import type { Env } from "../env";
 import { failurePage } from "../lib/failure";
 import { servesTraffic } from "../lib/envgate";
 import { originOk } from "../lib/http/csrf";
 import { verifyAccessToken } from "../lib/auth/cfaccess";
-import { findOrphans, isKnownSlug, readManifest } from "../lib/manifest";
 import { createCode, getCodeEnc, listCodes, revokeCode, type ExpirySpec } from "../lib/db/adminRepo";
 import { decryptCode } from "../lib/vault";
-import { codeStatus } from "../lib/codes";
+import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion } from "../lib/db/assetRepo";
+import { LIMITS, UploadError, validateUpload } from "../lib/content/validate";
+import { deleteAssetObjects, deleteVersionObjects, readAssetFile, readOriginalZip, storeVersion } from "../lib/content/store";
+import { panelPage } from "./adminView";
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -57,76 +58,34 @@ async function panelReferrerPolicy(c: Context<{ Bindings: Env }>, next: Next) {
 admin.use("/admin", panelReferrerPolicy);
 admin.use("/admin/*", panelReferrerPolicy);
 
-/** "2026-07-03 05:12 UTC" — compact, unambiguous, tabular-friendly. */
-function fmtUtc(sec: number): string {
-  return new Date(sec * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC";
-}
+type Ctx = Context<{ Bindings: Env }>;
 
-function panelPage(opts: { link?: { url: string; heading: string }; error?: string; host: string }, codesRows: Awaited<ReturnType<typeof listCodes>>, nowSec: number) {
-  const manifest = readManifest();
-  const orphans = new Set(findOrphans(codesRows, manifest));
-  // ADMIN_STYLE is inserted with raw() — its bytes must stay EXACTLY the exported constant, or the
-  // sha256 allowlisted in ADMIN_CSP (headers.ts) no longer matches and the browser drops the styles.
-  return html`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin · ${opts.host}</title><link rel="icon" href="${FAVICON}"><style>${raw(ADMIN_STYLE)}</style>
-<div class="wrap">
-<header class="site"><span class="seal" aria-hidden="true"></span><span class="brand">${opts.host}</span><span class="crumb">Admin</span></header>
-<h1>Assets &amp; codes</h1>
-${opts.error ? html`<p role="alert" class="alert">${opts.error}</p>` : ""}
-${opts.link
-  ? html`<div role="status" class="notice"><strong>${opts.link.heading}</strong><div class="linkrow"><code id="onetime-link">${opts.link.url}</code><button type="button" class="copy" data-copy="onetime-link">Copy</button></div></div>`
-  : ""}
-<section>
-<h2>Generate code</h2>
-<form method="post" action="/admin/codes" class="generate">
-  <div class="field"><label for="f-slug">Asset</label><select id="f-slug" name="slug">
-    ${Object.entries(manifest).map(([slug, m]) => html`<option value="${slug}">${m.title} (${slug})</option>`)}
-  </select></div>
-  <div class="field"><label for="f-label">Recipient label</label><input id="f-label" name="label" placeholder="e.g. Acme CFO"></div>
-  <div class="field"><label for="f-days">Expiry days</label><input id="f-days" name="days" inputmode="numeric" placeholder="90" title="Blank = 90 days"></div>
-  <div class="field"><label for="f-date">Or exact date</label><input id="f-date" name="date" type="date"></div>
-  <button type="submit" class="primary">Generate</button>
-</form>
-</section>
-<section>
-<h2>Codes</h2>
-<div class="table-scroll">
-<table>
-  <thead><tr><th>Label</th><th>Asset</th><th>Status</th><th>Last used</th><th>Redemptions</th><th></th><th></th></tr></thead>
-  <tbody>
-    ${codesRows.length === 0
-      ? html`<tr><td colspan="7" class="empty">No codes yet — generate one above to share an asset with a recipient.</td></tr>`
-      : codesRows.map((c) => html`<tr>
-      <td>${c.label}${orphans.has(c.asset_slug) ? html` <span class="warn">⚠ orphaned</span>` : ""}</td>
-      <td>${manifest[c.asset_slug]?.title ?? c.asset_slug}</td>
-      <td><span class="status ${codeStatus(c, nowSec)}">${codeStatus(c, nowSec)}</span></td>
-      <td>${c.last_used_at !== null ? fmtUtc(c.last_used_at) : html`<span class="muted">—</span>`}</td>
-      <td class="num">${c.use_count}</td>
-      <td><form method="post" action="/admin/show"><input type="hidden" name="id" value="${c.id}"><button type="submit" class="revoke">Show link</button></form></td>
-      <td><form method="post" action="/admin/revoke"><input type="hidden" name="id" value="${c.id}"><button type="submit" class="revoke" ${c.revoked_at !== null ? "disabled" : ""}>Revoke</button></form></td>
-    </tr>`)}
-  </tbody>
-</table>
-</div>
-</section>
-</div>
-<script>${raw(ADMIN_SCRIPT)}</script>`;
+/** Every panel render goes through here: one query pair, one opts shape (no direct panelPage
+ *  calls in routes). Mutation handlers surface failures via panelError — never a raw 500. */
+async function renderPanel(c: Ctx, extra: { error?: string; link?: { url: string; heading: string } } = {}, status = 200) {
+  return c.html(panelPage(
+    { ...extra, host: displayHost(c.env.PUBLIC_ORIGIN) },
+    await listAssets(c.env.DB),
+    await listCodes(c.env.DB),
+    Math.floor(Date.now() / 1000),
+  ), status as 200);
 }
+const panelError = (c: Ctx, error: string, status = 400) => renderPanel(c, { error }, status);
 
 // use_count is labeled "Redemptions", never "views" (spec §5). The raw code appears NOWHERE in this
-// page except the one-time link immediately after generation — lost link ⇒ revoke + reissue (spec §8).
+// page except the one-time link after generation and the explicit Show-link action (design
+// 2026-07-03 — lost link ⇒ Show link; revoke if exposure is suspected).
 admin.get("/admin", async (c) => {
-  return c.html(panelPage({ host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)));
+  return renderPanel(c);
 });
 
 admin.post("/admin/codes", async (c) => {
   if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
   const form = await c.req.formData();
   const slug = String(form.get("slug") ?? "");
-  // Do NOT trust the posted slug — a forged POST could target any string; it MUST be a real,
-  // published asset (spec §7 provenance boundary).
-  if (!isKnownSlug(slug)) {
-    return c.html(panelPage({ error: "unknown asset", host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)), 400);
-  }
+  // Do NOT trust the posted slug — a forged POST could target any string; it MUST be a real
+  // asset (spec §7 provenance boundary, now D1-backed).
+  if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
   const label = String(form.get("label") ?? "");
   const dateRaw = String(form.get("date") ?? "").trim(); // absolute date — wins if present
   const daysRaw = String(form.get("days") ?? "").trim(); // duration in days (computed DB-side)
@@ -134,28 +93,26 @@ admin.post("/admin/codes", async (c) => {
   // an expiry must get that expiry or an error). Days must be a positive INTEGER — a fractional
   // value would store a non-integer epoch in the INTEGER column.
   let expiry: ExpirySpec = null;
-  const badInput = (msg: string) =>
-    c.html(panelPage({ error: msg, host: displayHost(c.env.PUBLIC_ORIGIN) }, [], Math.floor(Date.now() / 1000)), 400);
   if (dateRaw) {
     // Strict shape + round-trip: Date.parse NORMALIZES impossible dates (2026-02-31 → March) —
     // reject anything that doesn't survive the round trip unchanged.
     const ms = Date.parse(`${dateRaw}T23:59:59Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw) || Number.isNaN(ms)
       || new Date(ms).toISOString().slice(0, 10) !== dateRaw) {
-      return badInput("invalid expiry date");
+      return panelError(c, "invalid expiry date");
     }
     expiry = { atSec: Math.floor(ms / 1000) };
   } else if (daysRaw) {
-    if (!/^\d+$/.test(daysRaw) || Number(daysRaw) <= 0) return badInput("expiry days must be a positive integer");
+    if (!/^\d+$/.test(daysRaw) || Number(daysRaw) <= 0) return panelError(c, "expiry days must be a positive integer");
     expiry = { days: Number(daysRaw) };
   }
   const code = await createCode(c.env.DB, slug, label, expiry, c.env.CODE_VAULT_KEY);
-  // Show ONCE (spec §8, §3 D3): the raw code is not persisted and cannot be recovered.
+  // Show ONCE (spec §8, §3 D3 as amended): the raw code is recoverable ONLY via Show link.
   const link = {
     url: `${c.env.PUBLIC_ORIGIN}/a/${slug}?code=${code}`,
     heading: "Copy this link now — it will NOT be shown again:",
   };
-  return c.html(panelPage({ link, host: displayHost(c.env.PUBLIC_ORIGIN) }, await listCodes(c.env.DB), Math.floor(Date.now() / 1000)));
+  return renderPanel(c, { link });
 });
 
 admin.post("/admin/revoke", async (c) => {
@@ -167,25 +124,127 @@ admin.post("/admin/revoke", async (c) => {
 
 // Show link (design 2026-07-03, amends spec §3 D3): decrypt code_enc via the CODE_VAULT_KEY ring
 // and re-render the panel with the recovered URL in the copy row. Explicit action only — the raw
-// code appears in no other response. Pre-vault rows (code_enc NULL) and any decrypt failure render
-// a calm "not recoverable" message (decryptCode fails closed to null).
+// code appears in no other response. Pre-vault rows (code_enc NULL) and decrypt failures render
+// calm, DISTINCT messages (decryptCode fails closed to null; silent fleet-wide key loss must be
+// operator-visible).
 admin.post("/admin/show", async (c) => {
   if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
   const form = await c.req.formData();
   const row = await getCodeEnc(c.env.DB, String(form.get("id") ?? ""));
-  const host = displayHost(c.env.PUBLIC_ORIGIN);
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (!row) return c.html(panelPage({ error: "unknown code", host }, await listCodes(c.env.DB), nowSec), 400);
+  if (!row) return panelError(c, "unknown code");
   const rawCode = await decryptCode(row.code_enc, c.env.CODE_VAULT_KEY);
   if (rawCode === null) {
-    // Pre-vault rows (no ciphertext) are expected; a PRESENT ciphertext that won't decrypt means
-    // the ring lost a key (rotation mistake, wrong-env secret) — say so, or silent key loss
-    // across the whole vault would masquerade as a calm per-row message.
     const error = row.code_enc === null
       ? `"${row.label}" is not recoverable (minted before the vault)`
       : `"${row.label}" failed to decrypt — check the CODE_VAULT_KEY ring (was a key rotated out?)`;
-    return c.html(panelPage({ error, host }, await listCodes(c.env.DB), nowSec));
+    return renderPanel(c, { error });
   }
   const link = { url: `${c.env.PUBLIC_ORIGIN}/a/${row.asset_slug}?code=${rawCode}`, heading: `Link for ${row.label}:` };
-  return c.html(panelPage({ link, host }, await listCodes(c.env.DB), nowSec));
+  return renderPanel(c, { link });
+});
+
+admin.post("/admin/assets", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const title = String(form.get("title") ?? "").trim();
+  // workers-types types FormData.get as string|null, but multipart file fields arrive as File at
+  // runtime — assert the runtime union, then narrow.
+  const file = form.get("file") as unknown as File | string | null;
+  if (!title || typeof file === "string" || file === null || file.size === 0) return panelError(c, "title and file are required");
+  if (file.size > LIMITS.uploadBytes) return panelError(c, "file too large");
+  const data = new Uint8Array(await file.arrayBuffer()); // read ONCE; doubles as the orig-zip bytes
+  let validated: ReturnType<typeof validateUpload>;
+  try {
+    validated = validateUpload(file.name, data);
+  } catch (e) {
+    return panelError(c, e instanceof UploadError ? e.message : "invalid upload");
+  }
+  try {
+    const slug = await createAsset(c.env.DB, title);
+    await storeVersion(c.env.ASSETS, slug, 1, validated.files, validated.isBundle ? data : null);
+    await recordVersion(c.env.DB, slug, 1, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), true);
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
+  }
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/version", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
+  const file = form.get("file") as unknown as File | string | null; // see the runtime-union note above
+  if (typeof file === "string" || file === null || file.size === 0) return panelError(c, "file is required");
+  if (file.size > LIMITS.uploadBytes) return panelError(c, "file too large");
+  const data = new Uint8Array(await file.arrayBuffer());
+  let validated: ReturnType<typeof validateUpload>;
+  try {
+    validated = validateUpload(file.name, data);
+  } catch (e) {
+    return panelError(c, e instanceof UploadError ? e.message : "invalid upload");
+  }
+  try {
+    const version = await nextVersion(c.env.DB, slug);
+    await storeVersion(c.env.ASSETS, slug, version, validated.files, validated.isBundle ? data : null);
+    // Checkbox absence is meaningful: no `draft` field ⇒ activate immediately.
+    await recordVersion(c.env.DB, slug, version, validated.files.length, validated.files.reduce((n, f) => n + f.bytes.length, 0), form.get("draft") !== "1");
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
+  }
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/activate", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  try {
+    await activateVersion(c.env.DB, String(form.get("slug") ?? ""), Number(form.get("version")));
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "failed");
+  }
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/delete-version", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  const version = Number(form.get("version"));
+  try {
+    await deleteVersion(c.env.DB, slug, version); // refuses the active version
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "failed");
+  }
+  await deleteVersionObjects(c.env.ASSETS, slug, version);
+  return renderPanel(c);
+});
+
+admin.post("/admin/assets/delete", async (c) => {
+  if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
+  const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  if (form.get("confirm") !== "1") return panelError(c, "check the confirmation box to delete an asset");
+  if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
+  try {
+    await deleteAsset(c.env.DB, slug);            // D1 first: revokes codes + drops rows (kill access)
+    await deleteAssetObjects(c.env.ASSETS, slug); // then objects; a partial R2 failure leaves only unreferenced garbage
+  } catch (e) {
+    return panelError(c, e instanceof Error ? e.message : "failed", 500);
+  }
+  return renderPanel(c);
+});
+
+// Admin-only download (GET, read-only — no originOk): bundles stream the preserved original zip
+// from orig/ (outside the gate-served tree); single-file assets stream the index.html.
+admin.get("/admin/assets/download", async (c) => {
+  const slug = c.req.query("slug") ?? "";
+  const v = Number(c.req.query("v") ?? NaN) || (await activeVersion(c.env.DB, slug));
+  if (!v) return failurePage();
+  const orig = await readOriginalZip(c.env.ASSETS, slug, v);
+  const body = orig ?? (await readAssetFile(c.env.ASSETS, slug, v, "index.html"));
+  if (!body) return failurePage();
+  c.header("content-type", orig ? "application/zip" : "text/html; charset=utf-8");
+  c.header("content-disposition", `attachment; filename="${slug}-v${v}${orig ? ".zip" : ".html"}"`);
+  return c.body(body.body);
 });

@@ -34,6 +34,8 @@ export interface CodeRow {
   revoked_at: number | null;
   last_used_at: number | null;
   use_count: number;
+  /** Joined by listCodes (LEFT JOIN assets): null = the asset row is gone ⇒ orphaned code. */
+  asset_title?: string | null;
 }
 
 /** DISPLAY status for the admin panel ONLY — NOT an authorization check. Real validity is enforced
