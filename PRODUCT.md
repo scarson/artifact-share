@@ -49,6 +49,7 @@ out of the way.
 
 ## Accessibility & Inclusion
 
-WCAG 2.2 AA: ≥4.5:1 body contrast in both schemes, visible labels (not placeholder-only), focus
-rings, dark mode via `prefers-color-scheme`, `prefers-reduced-motion` honored, semantic HTML that
-works with no JavaScript at all.
+WCAG 2.2 AA: ≥4.5:1 body contrast in both palettes, visible labels (not placeholder-only), focus
+rings, `prefers-reduced-motion` honored. Public pages follow the visitor's `prefers-color-scheme`;
+the admin panel is always dark (owner preference, 2026-07-03). Semantic HTML that works without
+JavaScript — the only script is the copy-link convenience button, with a selection fallback.

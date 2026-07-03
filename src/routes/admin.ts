@@ -1,6 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
 import { html, raw } from "hono/html";
-import { ADMIN_STYLE, FAVICON, displayHost } from "../lib/ui/styles";
+import { ADMIN_SCRIPT, ADMIN_STYLE, FAVICON, displayHost } from "../lib/ui/styles";
 import type { Env } from "../env";
 import { failurePage } from "../lib/failure";
 import { servesTraffic } from "../lib/envgate";
@@ -72,7 +72,7 @@ function panelPage(opts: { oneTimeLink?: string; error?: string; host: string },
 <h1>Assets &amp; codes</h1>
 ${opts.error ? html`<p role="alert" class="alert">${opts.error}</p>` : ""}
 ${opts.oneTimeLink
-  ? html`<div role="status" class="notice"><strong>Copy this link now — it will NOT be shown again:</strong> <code>${opts.oneTimeLink}</code></div>`
+  ? html`<div role="status" class="notice"><strong>Copy this link now — it will NOT be shown again:</strong><div class="linkrow"><code id="onetime-link">${opts.oneTimeLink}</code><button type="button" class="copy" data-copy="onetime-link">Copy</button></div></div>`
   : ""}
 <section>
 <h2>Generate code</h2>
@@ -106,7 +106,8 @@ ${opts.oneTimeLink
 </table>
 </div>
 </section>
-</div>`;
+</div>
+<script>${raw(ADMIN_SCRIPT)}</script>`;
 }
 
 // use_count is labeled "Redemptions", never "views" (spec §5). The raw code appears NOWHERE in this
