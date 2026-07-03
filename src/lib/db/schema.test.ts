@@ -30,3 +30,11 @@ test("id is minted DB-side as 32-hex (spec §5)", async () => {
   const row = await env.DB.prepare("SELECT id FROM codes WHERE code_hash = 'h-id'").first<{ id: string }>();
   expect(row!.id).toMatch(/^[0-9a-f]{32}$/);
 });
+
+test("codes.code_enc exists, TEXT, nullable (migration 0003)", async () => {
+  const cols = (await env.DB.prepare("PRAGMA table_info(codes)").all<{ name: string; type: string; notnull: number }>()).results;
+  const enc = cols.find((c) => c.name === "code_enc");
+  expect(enc).toBeDefined();
+  expect(enc!.type).toBe("TEXT");
+  expect(enc!.notnull).toBe(0); // pre-vault rows stay NULL = "not recoverable"
+});
