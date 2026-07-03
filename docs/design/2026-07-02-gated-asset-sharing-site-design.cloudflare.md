@@ -727,7 +727,7 @@ semantics, is integration-testable without cloud resources.
 - One-time-view or device/IP-locked codes (declined in favor of reusable links).
 - Sidecar/multi-file assets **now** (the §7 R2 growth path and the CSP are forward-compatible, but
   it is not built; revisit cookie-`Path` authorization per §7 when it arrives).
-- A separate access-audit log beyond `last_used_at` / `use_count` (still labeled "redemptions").
+- A separate access-audit log beyond `last_used_at` / `use_count` (still labeled "redemptions"). **[SUPERSEDED 2026-07-04 — an admin-ACTION audit log (audit_log, migration 0006) was added; see the 2026-07-03 design doc §Part E. Recipient-side access is still a counter, not a per-event log.]**
 - **Sandboxed-iframe asset rendering** — still deferred, still promoted to a §15 recommended
   reconsideration (Q2); nothing about Cloudflare changes that calculus.
 

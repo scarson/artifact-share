@@ -53,3 +53,8 @@ test("asset_versions.entry exists, TEXT, nullable (migration 0005)", async () =>
   expect(entry!.type).toBe("TEXT");
   expect(entry!.notnull).toBe(0); // legacy rows NULL ⇒ treated as index.html
 });
+
+test("audit_log exists with expected columns (migration 0006)", async () => {
+  const cols = (await env.DB.prepare("PRAGMA table_info(audit_log)").all<{ name: string }>()).results.map((c) => c.name);
+  expect(cols).toEqual(expect.arrayContaining(["id", "at", "action", "target", "detail"]));
+});

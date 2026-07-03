@@ -135,3 +135,27 @@ test("Unpack is idempotent/self-healing — re-running after files exist re-deri
   expect((await env.DB.prepare("SELECT entry FROM asset_versions WHERE slug=?1").bind(slug).first<{ entry: string }>())!.entry).toBe("index.html");
   expect(await env.ASSETS.get(`a/${slug}/1/app.css`)).not.toBeNull();
 });
+
+test("admin mutations write an Activity audit trail — and NEVER a raw code or URL", async () => {
+  // Mint a code, upload+public+alias an asset, then read the audit log.
+  await upload("/admin/assets", { title: "Audited" }, { name: "a.html", bytes: HTML });
+  const { slug } = (await env.DB.prepare("SELECT slug FROM assets").first<{ slug: string }>())!;
+  await ap({ slug, label: "Nels", days: "", date: "" }, "/admin/codes");
+  await ap({ slug, public: "1" }, "/admin/assets/public");
+  await ap({ slug, alias: "docs2" }, "/admin/assets/alias");
+  const rows = (await env.DB.prepare("SELECT action, target, detail FROM audit_log ORDER BY id").all<{ action: string; target: string; detail: string | null }>()).results;
+  const actions = rows.map((r) => r.action);
+  expect(actions).toEqual(expect.arrayContaining(["upload_asset", "mint_code", "set_public", "set_alias"]));
+  // The panel renders the Activity section.
+  const panel = await (await app.request("/admin", {}, AUTH)).text();
+  expect(panel).toContain("Activity");
+  expect(panel).toContain("mint_code");
+  // Security invariant: the minted raw code appears in NO audit row (only the label + slug).
+  const minted = (await ap({ slug, label: "leak-check", days: "", date: "" }, "/admin/codes"));
+  const rawCode = (await minted.text()).match(/\?code=([A-Za-z0-9_-]{22})/)![1];
+  const all = (await env.DB.prepare("SELECT target, detail FROM audit_log").all<{ target: string | null; detail: string | null }>()).results;
+  for (const r of all) {
+    expect(r.target ?? "").not.toContain(rawCode);
+    expect(r.detail ?? "").not.toContain(rawCode);
+  }
+});

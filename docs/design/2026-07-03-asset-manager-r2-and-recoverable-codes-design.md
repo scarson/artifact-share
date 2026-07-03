@@ -239,6 +239,26 @@ R2 made this a general file host, not an HTML-only one. Formalized:
 - Unchanged: the gate re-check, revocation, public toggle, versioning, and byte-identical failure
   parity all apply regardless of asset kind.
 
+## Part E — auditing & integrity alerting (owner-requested 2026-07-04)
+
+Made the audit/logging posture explicit and operational:
+
+- **Admin-action audit log (native, D1).** A new `audit_log` table (migration 0006) gets one
+  append per admin MUTATION — mint/revoke/show-link, upload/new-version/activate/delete-version/
+  delete-asset, set-public/set-alias/unpack — via a best-effort `writeAudit` (an audit-write
+  failure never breaks the action it records). A read-only **Activity** section in the panel shows
+  the recent trail. INVARIANT: only ids, slugs, and summaries (label/title/toggle) — NEVER a raw
+  code or share URL. This supersedes spec §14's "separate access-audit log … out of scope".
+- **Integrity alert delivery (native + optional webhook).** The existing `asset_object_missing`
+  event (valid code redeems, active version's R2 object gone — spec §13) now routes through
+  `reportIntegrity`: always `console.error` (Workers Logs channel), PLUS an optional HTTPS webhook
+  (`ALERT_WEBHOOK_URL` secret) POSTed via `waitUntil`, carrying only the safe fields. The webhook
+  is the recommended primary channel because it works with platform observability OFF.
+- **Cloudflare Notifications / observability tradeoff** documented in SETUP §8/§12: Workers Logs
+  capture request URLs (which hold the code), so platform logging stays off/minimal; Cloudflare
+  Notifications fire on predefined product metrics (e.g. Worker error-rate), not on log content,
+  so a content-exact "this event happened" alert is best done code-side (the webhook).
+
 ## 4. Self-answered open questions
 
 | Question | Answer | Why |

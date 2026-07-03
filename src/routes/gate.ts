@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import type { Env } from "../env";
 import { failurePage } from "../lib/failure";
@@ -11,22 +11,34 @@ import { badShapeLimitOk, gateLimitOk } from "../lib/ratelimit";
 import { activeVersionEntry, publicAssetBySlug } from "../lib/db/assetRepo";
 import { readAssetFile } from "../lib/content/store";
 import { isInlineType } from "../lib/content/validate";
+import { reportIntegrity } from "../lib/alert";
 import { servePublicFile } from "./publicAsset";
 
 export const gate = new Hono<{ Bindings: Env }>();
 
 const cookieName = (slug: string) => `asset_access_${slug}`;
 
+/** c.executionCtx THROWS (not returns undefined) when there's no ExecutionContext — e.g. an
+ *  app.request() test call without a ctx. Guard so the integrity console.error always fires; the
+ *  webhook dispatch is simply skipped when no ctx is available. */
+function safeWaitUntil(c: Context<{ Bindings: Env }>): ((p: Promise<unknown>) => void) | undefined {
+  try {
+    return c.executionCtx.waitUntil.bind(c.executionCtx);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Stream one file of an asset version. Fail closed: a miss/error is the generic page. When
  *  `integrity` is set (path === the version's document entry), a missing object is an integrity
  *  failure (valid auth, active version, object gone — spec §13), logged. HTML gets ASSET_CSP;
  *  every other type falls to the finalizing middleware's restrictive default (so an inline SVG
  *  can't run script). Non-inline types (zip, octet-stream, csv) download; renderable types inline. */
-async function serveFile(env: Env, slug: string, version: number, path: string, integrity?: { codeId: string; entry: string }): Promise<Response> {
+async function serveFile(env: Env, slug: string, version: number, path: string, integrity?: { codeId: string; entry: string; waitUntil?: (p: Promise<unknown>) => void }): Promise<Response> {
   const obj = await readAssetFile(env.ASSETS, slug, version, path).catch(() => null);
   if (!obj) {
     if (integrity && path === integrity.entry) {
-      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version, codeId: integrity.codeId }));
+      reportIntegrity(env, { event: "asset_object_missing", slug, version, codeId: integrity.codeId }, integrity.waitUntil);
     }
     return failurePage();
   }
@@ -82,7 +94,7 @@ gate.get("/a/:slug", async (c) => {
     const av = await activeVersionEntry(c.env.DB, slug).catch(() => null);
     if (av === null) return failurePage(); // unpublished/unknown ⇒ silent generic page
     if ((await c.env.ASSETS.head(`a/${slug}/${av.version}/${av.entry}`)) === null) {
-      console.error(JSON.stringify({ level: "error", event: "asset_object_missing", slug, version: av.version, codeId: res.codeId }));
+      reportIntegrity(c.env, { event: "asset_object_missing", slug, version: av.version, codeId: res.codeId }, safeWaitUntil(c));
       return failurePage();
     }
     const token = await signAssetToken(
@@ -152,5 +164,5 @@ gate.get("/a/:slug/*", async (c) => {
   const av = await activeVersionEntry(c.env.DB, slug).catch(() => null);
   if (av === null) return failurePage();
   const target = emptyTail ? av.entry : path; // /a/<slug>/ serves the document entry (any type)
-  return serveFile(c.env, slug, av.version, target, { codeId: resolved.codeId, entry: av.entry });
+  return serveFile(c.env, slug, av.version, target, { codeId: resolved.codeId, entry: av.entry, waitUntil: safeWaitUntil(c) });
 });

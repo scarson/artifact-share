@@ -6,6 +6,7 @@ import { html, raw } from "hono/html";
 import { ADMIN_SCRIPT, ADMIN_STYLE, FAVICON } from "../lib/ui/styles";
 import type { listAssets } from "../lib/db/assetRepo";
 import type { listCodes } from "../lib/db/adminRepo";
+import type { listAudit } from "../lib/db/auditRepo";
 import { codeStatus } from "../lib/codes";
 
 export interface PanelOpts {
@@ -15,6 +16,7 @@ export interface PanelOpts {
 }
 type Assets = Awaited<ReturnType<typeof listAssets>>;
 type Codes = Awaited<ReturnType<typeof listCodes>>;
+type Audit = Awaited<ReturnType<typeof listAudit>>;
 
 /** "2026-07-03 05:12 UTC" — compact, unambiguous, tabular-friendly. */
 function fmtUtc(sec: number): string {
@@ -67,7 +69,28 @@ ${assets.length > 0
 </section>`;
 }
 
-export function panelPage(opts: PanelOpts, assets: Assets, codesRows: Codes, nowSec: number) {
+/** Read-only Activity log — the admin's who/when/what trail (design Part E). Never shows a raw
+ *  code or URL (the audit rows carry only ids, slugs, and summaries). */
+function activitySection(audit: Audit) {
+  return html`<section>
+<h2>Activity</h2>
+${audit.length === 0
+  ? html`<p class="empty">No admin activity recorded yet.</p>`
+  : html`<div class="table-scroll"><table>
+  <thead><tr><th>When</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+  <tbody>
+    ${audit.map((r) => html`<tr>
+      <td class="muted">${fmtUtc(r.at)}</td>
+      <td><span class="act">${r.action}</span></td>
+      <td>${r.target !== null ? html`<code>${r.target}</code>` : html`<span class="muted">—</span>`}</td>
+      <td>${r.detail ?? html`<span class="muted">—</span>`}</td>
+    </tr>`)}
+  </tbody>
+</table></div>`}
+</section>`;
+}
+
+export function panelPage(opts: PanelOpts, assets: Assets, codesRows: Codes, audit: Audit, nowSec: number) {
   return html`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin · ${opts.host}</title><link rel="icon" href="${FAVICON}"><style>${raw(ADMIN_STYLE)}</style>
 <div class="wrap">
 <header class="site"><span class="seal" aria-hidden="true"></span><span class="brand">${opts.host}</span><span class="crumb">Admin</span></header>
@@ -110,6 +133,7 @@ ${assetsSection(assets)}
 </table>
 </div>
 </section>
+${activitySection(audit)}
 </div>
 <script>${raw(ADMIN_SCRIPT)}</script>`;
 }
