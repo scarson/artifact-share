@@ -55,13 +55,13 @@ notes and commit messages.
 
 ## Execution Status
 
-**Overall:** Phase A shipped (PR #4); B/C in progress; plan review converged round 8 (0 findings).
+**Overall:** ALL phases shipped — A (PR #4), B+C (PR #5), merged to main 2026-07-03. One owner action remains: widen the CI deploy token (Zone Workers Routes + R2 Storage) so production deploys, then publish /about + run the live mint→redeem check. See docs/HANDOFF.md.
 
 | Phase | Status | Ship SHA(s) | Notes |
 |---|---|---|---|
 | A — Recoverable codes vault | ✅ Shipped | `0ec72be` (PR #4) | A6 live-verify deferred pending prod-deploy token fix |
-| B — R2 asset manager | ✅ Implemented | (branch) | PR pending; 150 tests green |
-| C — Public assets + /about (owner-requested 2026-07-03) | ✅ Implemented | (branch) | /about publish deferred to prod deploy |
+| B — R2 asset manager | ✅ Shipped | `121f273` (PR #5) | merged 2026-07-03 |
+| C — Public assets + /about (owner-requested 2026-07-03) | ✅ Shipped | `121f273` (PR #5) | /about publish deferred to prod deploy |
 
 ### Standing context for every task (read once, applies throughout)
 
@@ -444,7 +444,7 @@ command there and retry. Record the outcome in this plan.
 
 ## Phase B — R2 asset manager
 
-**Execution Status:** ✅ IMPLEMENTED 2026-07-03 (B1–B9 on branch `claude/eager-almeida-95f4ee`, landing on `dev`; PR pending). 150 tests green, tsc clean, browser-verified (real zip bundle serves with relative subresources). Deviation: caps lowered for isolate memory (B4); B7 and C2 built together (gate needs the public short-circuit).
+**Execution Status:** ✅ SHIPPED at `121f273` (PR #5 merged 2026-07-03). 150 tests green, tsc clean, browser-verified (real zip bundle serves with relative subresources). Deviation: caps lowered for isolate memory (B4); B7 and C2 built together (gate needs the public short-circuit).
 
 **Owner-action gate: ✅ CLEARED 2026-07-03 08:24Z.** R2 was account-disabled (API 10042, verified
 08:09Z); the owner enabled it in the dashboard, and both buckets now exist (`artifact-share-prod`
@@ -1296,7 +1296,7 @@ console.log("config lints OK");
 
 ## Phase C — Public assets + /about (owner-requested 2026-07-03)
 
-**Execution Status:** ✅ IMPLEMENTED 2026-07-03 (C1–C3 done; C4 README done via stop-slop). Browser-verified: uploaded a bundle, toggled public, alias `demo`+`about`, /about renders under ASSET_CSP. ⏸ Production publish of /about DEFERRED pending prod deploy (owner uploads via /admin, or CLI once the deploy-token Zone-Workers-Routes fix lands — see HANDOFF).
+**Execution Status:** ✅ SHIPPED at `121f273` (PR #5 merged 2026-07-03). Browser-verified: uploaded a bundle, toggled public, alias `demo`+`about`, /about renders under ASSET_CSP. ⏸ Production publish of /about DEFERRED pending prod deploy (owner uploads via /admin, or CLI once the deploy-token Zone-Workers-Routes fix lands — see HANDOFF).
 
 Runs strictly AFTER Phase B (it extends the asset manager). Design: design doc §Part C. The two
 schema columns (`is_public`, `public_alias`) ship inside Phase B's migration 0004 (B1) since that
