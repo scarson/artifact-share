@@ -1,3 +1,19 @@
+# Session Handoff — Artifact Share (Cloudflare Worker + D1 + R2)
+
+**Status 2026-07-04: FULLY DEPLOYED & LIVE.** The CI deploy token now has Zone→Workers Routes +
+R2 Storage scope, so `main` merges deploy production automatically (green). All shipped:
+recoverable codes (vault + Show link), R2 asset manager (upload/version/activate/download/delete),
+public assets + aliases, `/about` architecture page (live at share.scarson.io/about), root→About
+link, and general file sharing (any file type as a single-file asset served inline-where-possible;
+zips download by default with an on-demand Unpack to a browsable bundle). Live-verified in prod:
+root link, /about (legacy NULL-entry row serves — back-compat OK), and a single-file PDF served
+inline then cleaned up. 164 tests green. PRs #4/#5/#6 merged after blind adversarial review.
+
+Nothing is blocked. The one remaining nicety: run the owner-only end-to-end mint→redeem→revoke
+check on production /admin (needs a Google login) if you want that last manual confirmation.
+
+---
+
 # Session Handoff — Artifact Share (Cloudflare Worker + D1)
 
 **Written:** 2026-07-03 · **Branch:** `dev` · **Tip:** `182c1e2` (pushed to `origin/dev`) · **PR:** [#1](https://github.com/scarson/artifact-share/pull/1) `dev` → `main` (OPEN, unmerged)
