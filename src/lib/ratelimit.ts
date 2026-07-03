@@ -31,7 +31,7 @@ export async function gateLimitOk(db: D1Database, kind: "redeem" | "load", slug:
   }
 }
 
-/** Malformed-slug traffic: a fixed bucket (never the bad slug as a key, never a manifest lookup)
+/** Malformed-slug traffic: a fixed bucket (never the bad slug as a key, never an asset lookup)
  *  that still feeds the global circuit-breaker (spec §9). */
 export async function badShapeLimitOk(db: D1Database): Promise<boolean> {
   try {

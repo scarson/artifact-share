@@ -51,7 +51,7 @@ app.get("/robots.txt", (c) => c.text("User-agent: *\nDisallow: /\n"));
 app.route("/", gate);
 app.route("/", admin);
 
-// Every unknown route returns the SAME generic page (spec §13 deny tests: the manifest URLs land
+// Every unknown route returns the SAME generic page (spec §13 deny tests: probe URLs land
 // here; no route class is distinguishable from a gate failure).
 app.notFound(() => failurePage());
 

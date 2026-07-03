@@ -8,16 +8,6 @@
 	// Spec §10: no accidental public hostnames. Both pinned explicitly, never defaulted.
 	"workers_dev": false,
 	"preview_urls": false,
-	// Lets generated code import asset HTML as string modules (spec §7 bundled-module mechanism).
-	"rules": [
-		{
-			"type": "Text",
-			"globs": [
-				"**/*.html"
-			],
-			"fallthrough": true
-		}
-	],
 	"vars": {
 		"ENVIRONMENT": "development",
 		"PUBLIC_ORIGIN": "http://localhost:8787",
@@ -124,5 +114,5 @@
 			]
 		}
 	}
-	// INVARIANT (spec §4/§7): this file MUST NEVER gain an "assets" key. The build lints this (Task 6.2).
+	// INVARIANT (spec §4/§7): this file MUST NEVER gain an "assets" key. scripts/lint-config.mjs lints this in CI.
 }

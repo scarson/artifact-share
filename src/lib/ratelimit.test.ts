@@ -40,7 +40,7 @@ test("stale rows are lazily pruned on a fresh-window bump (spec §5/§9)", async
 
 test("a random-slug spray does NOT create unbounded rate_limits rows (bucketed)", async () => {
   for (let i = 0; i < 50; i++) {
-    const slug = `spray${String(i).padStart(17, "0")}`; // well-formed 22-char, not in manifest
+    const slug = `spray${String(i).padStart(17, "0")}`; // well-formed 22-char, no asset row
     await gateLimitOk(env.DB, "redeem", slug);
   }
   const row = await env.DB.prepare("SELECT count(*) AS n FROM rate_limits").first<{ n: number }>();

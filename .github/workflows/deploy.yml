@@ -13,10 +13,7 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24 }
       - run: npm ci
-      - run: npm run build-manifest
-      # The generated modules are COMMITTED (Task 0.2); a merge that forgot to regenerate them
-      # would deploy stale content silently. Fail instead.
-      - run: git diff --exit-code .generated
+      - run: npm run lint-config
       - run: npm test
   deploy:
     needs: test
@@ -43,7 +40,7 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24 }
       - run: npm ci
-      - run: npm run build-manifest
+      - run: npm run lint-config
       # Forward-only migrations, applied BEFORE the code deploy (spec §11). Never run from previews
       # of the other environment; never rolled back — schema stays compatible one release back.
       - run: npx wrangler d1 migrations apply "$DB_NAME" --env "$WRANGLER_ENV" --remote
