@@ -18,6 +18,10 @@ export interface Env {
   ACCESS_AUD: string;
   /** The single admin's email; the Worker re-checks the Access token's email claim against this. */
   ADMIN_EMAIL: string;
+  /** OPTIONAL: an HTTPS webhook (Slack/Discord/generic) the Worker POSTs a small JSON alert to on
+   *  the integrity-failure path (design Part E). Unset ⇒ no webhook (console.error only). The
+   *  payload carries ONLY safe fields (event, slug, version, codeId) — never a raw code or URL. */
+  ALERT_WEBHOOK_URL?: string;
   /** DEV-ONLY: when "1", the admin routes skip Access verification (local `wrangler dev`, which has
    *  no Access edge). MUST be unset in preview/production — never declared in those env blocks. */
   ACCESS_DEV_BYPASS?: string;

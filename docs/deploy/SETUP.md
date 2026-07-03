@@ -460,7 +460,7 @@ if any of these are ever proposed:
 - **Do not enable Logpush** for this Worker.
 - **Never `console.log` a full URL or a raw code** anywhere in the Worker
   code — this includes debug logging added during future work. The one
-  intentional structured log the gate emits (`event=asset_module_missing`,
+  intentional structured log the gate emits (`event=asset_object_missing`,
   §13) logs only `slug` and `codeId`, never the raw code.
 - Restrict Cloudflare account membership and API token issuance. Anyone who
   can deploy this Worker can read every secret bound to it at runtime and
@@ -555,7 +555,7 @@ non-expired, non-revoked code successfully redeems but the corresponding
 asset module is missing from the deployed bundle:
 
 ```json
-{"level":"error","event":"asset_module_missing","slug":"...","codeId":"..."}
+{"level":"error","event":"asset_object_missing","slug":"...","codeId":"..."}
 ```
 
 This is distinct from an ordinary 404 — it means the database and the
@@ -567,7 +567,7 @@ in the UI tells anyone this happened.
 
 **Action required:** wire a Cloudflare notification (a Workers alert on
 error-rate for this Worker) or, at minimum, a scheduled review of Workers
-logs filtered to `event=asset_module_missing`. Until such alerting exists,
+logs filtered to `event=asset_object_missing`. Until such alerting exists,
 treat any occurrence of this event found in logs as an incident — investigate
 which slug/code triggered it and whether the corresponding asset needs to be
 restored in a follow-up deploy.

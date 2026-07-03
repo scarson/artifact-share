@@ -10,6 +10,7 @@ import { decryptCode } from "../lib/vault";
 import { activateVersion, activeVersion, assetExists, createAsset, deleteAsset, deleteVersion, listAssets, nextVersion, recordVersion, setAlias, setPublic, updateVersionEntry, versionEntry } from "../lib/db/assetRepo";
 import { LIMITS, UploadError, extractBundle, prepareUpload } from "../lib/content/validate";
 import { deleteAssetObjects, deleteVersionObjects, preserveOriginalZip, readAssetFile, readOriginalZip, storeVersion } from "../lib/content/store";
+import { listAudit, writeAudit } from "../lib/db/auditRepo";
 import { panelPage } from "./adminView";
 
 export const admin = new Hono<{ Bindings: Env }>();
@@ -67,6 +68,7 @@ async function renderPanel(c: Ctx, extra: { error?: string; link?: { url: string
     { ...extra, host: displayHost(c.env.PUBLIC_ORIGIN) },
     await listAssets(c.env.DB),
     await listCodes(c.env.DB),
+    await listAudit(c.env.DB, 50),
     Math.floor(Date.now() / 1000),
   ), status as 200);
 }
@@ -107,6 +109,7 @@ admin.post("/admin/codes", async (c) => {
     expiry = { days: Number(daysRaw) };
   }
   const code = await createCode(c.env.DB, slug, label, expiry, c.env.CODE_VAULT_KEY);
+  await writeAudit(c.env.DB, "mint_code", slug, label || "(no label)"); // label only — never the raw code
   // Show ONCE (spec §8, §3 D3 as amended): the raw code is recoverable ONLY via Show link.
   const link = {
     url: `${c.env.PUBLIC_ORIGIN}/a/${slug}?code=${code}`,
@@ -118,7 +121,9 @@ admin.post("/admin/codes", async (c) => {
 admin.post("/admin/revoke", async (c) => {
   if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
   const form = await c.req.formData();
-  await revokeCode(c.env.DB, String(form.get("id") ?? ""));
+  const id = String(form.get("id") ?? "");
+  await revokeCode(c.env.DB, id);
+  await writeAudit(c.env.DB, "revoke_code", id);
   return c.redirect("/admin", 302);
 });
 
@@ -139,6 +144,7 @@ admin.post("/admin/show", async (c) => {
       : `"${row.label}" failed to decrypt — check the CODE_VAULT_KEY ring (was a key rotated out?)`;
     return renderPanel(c, { error });
   }
+  await writeAudit(c.env.DB, "show_link", row.asset_slug, row.label || "(no label)"); // reveal is sensitive; log the fact, not the code
   const link = { url: `${c.env.PUBLIC_ORIGIN}/a/${row.asset_slug}?code=${rawCode}`, heading: `Link for ${row.label}:` };
   return renderPanel(c, { link });
 });
@@ -171,6 +177,7 @@ admin.post("/admin/assets", async (c) => {
     const slug = await createAsset(c.env.DB, title);
     const entry = await storeUploadedFile(c.env, slug, 1, file);
     await recordVersion(c.env.DB, slug, 1, 1, file.size, true, entry);
+    await writeAudit(c.env.DB, "upload_asset", slug, `${title} · ${entry}`);
   } catch (e) {
     if (e instanceof UploadError) return panelError(c, e.message);
     return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
@@ -190,7 +197,9 @@ admin.post("/admin/assets/version", async (c) => {
     const version = await nextVersion(c.env.DB, slug);
     const entry = await storeUploadedFile(c.env, slug, version, file);
     // Checkbox absence is meaningful: no `draft` field ⇒ activate immediately.
-    await recordVersion(c.env.DB, slug, version, 1, file.size, form.get("draft") !== "1", entry);
+    const activated = form.get("draft") !== "1";
+    await recordVersion(c.env.DB, slug, version, 1, file.size, activated, entry);
+    await writeAudit(c.env.DB, "new_version", slug, `v${version} · ${entry}${activated ? " · activated" : " · draft"}`);
   } catch (e) {
     if (e instanceof UploadError) return panelError(c, e.message);
     return panelError(c, e instanceof Error ? e.message : "upload failed", 500);
@@ -226,6 +235,7 @@ admin.post("/admin/assets/unpack", async (c) => {
     await preserveOriginalZip(c.env.ASSETS, slug, version, zipBytes); // keep for Download + re-heal, BEFORE the clean-slate store
     await storeVersion(c.env.ASSETS, slug, version, files, null);     // clears the .zip, writes files
     await updateVersionEntry(c.env.DB, slug, version, "index.html", files.length, files.reduce((n, f) => n + f.bytes.length, 0));
+    await writeAudit(c.env.DB, "unpack", slug, `v${version} → bundle (${files.length} files)`);
   } catch (e) {
     return panelError(c, e instanceof Error ? e.message : "unpack failed", 500);
   }
@@ -235,11 +245,14 @@ admin.post("/admin/assets/unpack", async (c) => {
 admin.post("/admin/assets/activate", async (c) => {
   if (!originOk(c.req.raw, c.env.PUBLIC_ORIGIN)) return c.text("forbidden", 403);
   const form = await c.req.formData();
+  const slug = String(form.get("slug") ?? "");
+  const version = Number(form.get("version"));
   try {
-    await activateVersion(c.env.DB, String(form.get("slug") ?? ""), Number(form.get("version")));
+    await activateVersion(c.env.DB, slug, version);
   } catch (e) {
     return panelError(c, e instanceof Error ? e.message : "failed");
   }
+  await writeAudit(c.env.DB, "activate", slug, `v${version}`);
   return renderPanel(c);
 });
 
@@ -254,6 +267,7 @@ admin.post("/admin/assets/delete-version", async (c) => {
     return panelError(c, e instanceof Error ? e.message : "failed");
   }
   await deleteVersionObjects(c.env.ASSETS, slug, version);
+  await writeAudit(c.env.DB, "delete_version", slug, `v${version}`);
   return renderPanel(c);
 });
 
@@ -269,6 +283,7 @@ admin.post("/admin/assets/delete", async (c) => {
   } catch (e) {
     return panelError(c, e instanceof Error ? e.message : "failed", 500);
   }
+  await writeAudit(c.env.DB, "delete_asset", slug);
   return renderPanel(c);
 });
 
@@ -277,7 +292,9 @@ admin.post("/admin/assets/public", async (c) => {
   const form = await c.req.formData();
   const slug = String(form.get("slug") ?? "");
   if (!(await assetExists(c.env.DB, slug))) return panelError(c, "unknown asset");
-  await setPublic(c.env.DB, slug, form.get("public") === "1"); // checkbox absent ⇒ make private
+  const isPublic = form.get("public") === "1"; // checkbox absent ⇒ make private
+  await setPublic(c.env.DB, slug, isPublic);
+  await writeAudit(c.env.DB, "set_public", slug, isPublic ? "public=on" : "public=off");
   return renderPanel(c);
 });
 
@@ -292,6 +309,7 @@ admin.post("/admin/assets/alias", async (c) => {
   } catch (e) {
     return panelError(c, e instanceof Error ? e.message : "invalid alias");
   }
+  await writeAudit(c.env.DB, "set_alias", slug, alias === "" ? "(cleared)" : `/${alias}`);
   return renderPanel(c);
 });
 
