@@ -1,114 +1,184 @@
 # Session Handoff — Artifact Share (Cloudflare Worker + D1 + R2)
 
-**Status 2026-07-04: FULLY DEPLOYED & LIVE.** The CI deploy token now has Zone→Workers Routes +
-R2 Storage scope, so `main` merges deploy production automatically (green). All shipped:
-recoverable codes (vault + Show link), R2 asset manager (upload/version/activate/download/delete),
-public assets + aliases, `/about` architecture page (live at share.scarson.io/about), root→About
-link, and general file sharing (any file type as a single-file asset served inline-where-possible;
-zips download by default with an on-demand Unpack to a browsable bundle). Live-verified in prod:
-root link, /about (legacy NULL-entry row serves — back-compat OK), and a single-file PDF served
-inline then cleaned up. 164 tests green. PRs #4/#5/#6 merged after blind adversarial review.
+**Written:** 2026-07-04 · **Branch:** `dev` (worktree `.claude/worktrees/eager-almeida-95f4ee`) · **Tip:** `origin/dev` = latest on this branch · **Status: FULLY BUILT, DEPLOYED & LIVE. No open PRs. Nothing blocked.**
 
-## Auditing & alerting (Phase E, shipped 2026-07-04, PR #7)
+This is a fresh-agent checkpoint. It replaces the accreted 2026-07-03 handoff (which described a
+pre-R2, pre-Access-token-fix world; that version is preserved in git — see the History note at the
+bottom). **Authoritative durable records, in read order:**
+- Spec: [`docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md`](design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md) (code cites its §N; carries amendment banners for the R2/audit changes).
+- Asset-manager + recoverable-codes + public + file-sharing + audit design: [`docs/design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md`](design/2026-07-03-asset-manager-r2-and-recoverable-codes-design.md) (Parts A–E).
+- Living plan: [`docs/plans/2026-07-03-asset-manager-r2-and-recoverable-codes-plan.md`](plans/2026-07-03-asset-manager-r2-and-recoverable-codes-plan.md) (Execution Status: all phases ✅ shipped).
+- Pitfalls (read before coding): [`docs/pitfalls/implementation-pitfalls.md`](pitfalls/implementation-pitfalls.md), [`docs/pitfalls/testing-pitfalls.md`](pitfalls/testing-pitfalls.md).
+- Deploy/ops runbook: [`docs/deploy/SETUP.md`](deploy/SETUP.md).
 
-- **Admin-action audit log** — `audit_log` table (migration 0006) records every admin mutation;
-  read-only **Activity** panel section shows the trail. Stores only ids/slugs/summaries, never a
-  raw code or URL (test-pinned). Populates as you use the panel (0 rows until first action).
-- **Integrity alert** now has a delivery path: the `asset_object_missing` event goes to
-  `console.error` PLUS an optional webhook. **To enable the webhook** (recommended — works with
-  observability off): `echo -n "https://hooks.slack.com/…" | npx wrangler secret put
-  ALERT_WEBHOOK_URL --env production`. Unset = console channel only.
-- Observability posture is deliberate (SETUP §8/§12): Workers Logs/Logpush capture request URLs
-  which contain the code, so keep platform observability OFF/minimal and rely on the webhook.
+## What this app is (1 paragraph — CURRENT)
 
-Nothing is blocked. The one remaining nicety: run the owner-only end-to-end mint→redeem→revoke
-check on production /admin (needs a Google login) if you want that last manual confirmation.
-
----
-
-# Session Handoff — Artifact Share (Cloudflare Worker + D1)
-
-**Written:** 2026-07-03 · **Branch:** `dev` · **Tip:** `182c1e2` (pushed to `origin/dev`) · **PR:** [#1](https://github.com/scarson/artifact-share/pull/1) `dev` → `main` (OPEN, unmerged)
-
-This is a fresh-agent handoff. The **authoritative durable record is the plan**:
-[`docs/plans/2026-07-02-gated-asset-sharing-site-cloudflare-plan.md`](plans/2026-07-02-gated-asset-sharing-site-cloudflare-plan.md)
-— read its top **Execution Status** table, **Deviations**, and **Discoveries** first. This doc points at it and adds session continuation state; it does not duplicate it.
-
----
+Single-admin Cloudflare Worker (Hono) for sharing confidential files behind per-recipient access
+codes. `GET /a/:slug?code=` redeems a code in one atomic D1 `UPDATE…RETURNING`, sets a signed
+HttpOnly cookie, and 302s to `/a/:slug/` (trailing slash — so relative subresources in bundles
+resolve, RFC 3986). Every later request re-checks the code in D1 and **fails closed** — instant
+revocation. Codes are stored as `SHA-256(code)` for lookup **plus** AES-256-GCM ciphertext
+(`code_enc`, `CODE_VAULT_KEY`) so the admin can re-show a sent link. **Asset bytes live in a
+private R2 bucket** (binding-only, no public URL), metadata in D1 — publishing is a runtime admin
+upload, NOT a git/deploy step, so the public repo holds zero content. Assets support any file type
+(single file, served inline-where-renderable / download otherwise) or a zip (stored as a download
+by default, with an on-demand **Unpack** to a browsable bundle). Assets can be toggled **public**
+(served with no code) and given a friendly **alias** (e.g. `/about`). `/admin` (Cloudflare Access +
+Google SSO) mints/revokes codes, manages assets, shows a recoverable link, and shows an **Activity**
+audit log. Everything fails closed to ONE byte-identical generic page.
 
 ## Headline state
 
-- **The app is DEPLOYED and LIVE** (deployed manually via `wrangler deploy`, NOT via CI):
-  - **Production:** Worker `artifact-share` on custom domain **`https://share.scarson.io`**, D1 `artifact-share-prod` (`220fd2d6-e467-41fb-9eed-30d96b431ebb`).
-  - **Preview:** Worker `artifact-share-preview` at **`https://artifact-share-preview.samuel-carson.workers.dev`**, D1 `artifact-share-preview` (`37eeeefc-880d-464f-844b-e99cb0db091a`).
-  - Both: migrations `0001`+`0002` applied `--remote`; `meta.environment` markers set (`production`/`preview`); secret `ASSET_COOKIE_SECRET` set per env.
-- **Working tree clean; 94 tests green; `npx tsc --noEmit` clean.**
-- **Admin auth = Cloudflare Access + Google SSO** (replaced password+TOTP). Access app `c24ca76d-ef67-4280-ad9c-fc6d9f31d257`, team `https://samuel-carson.cloudflareaccess.com`, AUD `b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11`, policy = `Include Login Method=Google` + `Require Emails=samuel.carson@gmail.com` (attached to the app). Destinations: `/admin` on prod + preview only.
+- **LIVE in production:** Worker `artifact-share` on `https://share.scarson.io`, D1
+  `artifact-share-prod` (`220fd2d6-e467-41fb-9eed-30d96b431ebb`), R2 `artifact-share-prod`.
+- **Preview:** `artifact-share-preview` at `artifact-share-preview.samuel-carson.workers.dev`, D1
+  `artifact-share-preview` (`37eeeefc-880d-464f-844b-e99cb0db091a`), R2 `artifact-share-preview`.
+- **CI is fully green** (`.github/workflows/deploy.yml`): push `dev` → preview deploy; merge `main`
+  → production deploy. The deploy token now has the scopes it needs (Workers Scripts:Edit,
+  D1:Edit, Zone→Workers Routes:Edit on `scarson.io`, Account→Workers R2 Storage:Edit).
+- **170 tests green, `tsc --noEmit` clean, `npm run lint-config` clean.** Working tree clean.
+- **Migrations 0001–0006** applied to both remote DBs (via CI deploy job).
+- **Secrets set (both envs):** `ASSET_COOKIE_SECRET` (`k1:` key ring), `CODE_VAULT_KEY` (`k1:` key
+  ring, standard-base64 32 bytes). **`ALERT_WEBHOOK_URL` is OPTIONAL and currently UNSET.**
+- **Admin auth:** Cloudflare Access app `c24ca76d-ef67-4280-ad9c-fc6d9f31d257`, team
+  `https://samuel-carson.cloudflareaccess.com`, AUD
+  `b5f88feddc211551d9dad1a3e7541bc9c376138f6553438883ff4e3a4b9c2f11`, policy = Google login +
+  email `samuel.carson@gmail.com`. `/admin` gated on prod + preview.
+- **Live content:** one public asset — the `/about` architecture explainer
+  (source: [`docs/assets-src/about/index.html`](assets-src/about/index.html), slug
+  `zTz_nuGaw8qeTImrag14Bw`, public, alias `about`). Its D1 row has `entry = NULL` (pre-0005) which
+  the code reads as `index.html` — a live proof of back-compat; leave it or re-upload to normalize.
 
-## What this app is (1 paragraph)
+## What shipped (this multi-session arc — all merged to `main`)
 
-Single-admin Cloudflare Worker (Hono + D1). `GET /a/:slug?code=` redeems a per-recipient access code in one atomic D1 `UPDATE…RETURNING`, sets a signed HttpOnly cookie, 302s to a clean URL; every later load re-checks the code in D1 and **fails closed** (instant revocation). Codes stored only as `SHA-256(code)`. Asset HTML is compiled into the Worker as Text modules (`.generated/*`) — **no `assets` config key ever** (the build lints it). `/admin` (Cloudflare Access-gated) mints/revokes codes. Spec: [`docs/design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md`](design/2026-07-02-gated-asset-sharing-site-design.cloudflare.md).
+Everything is on `main`. PRs #1–#7 all merged after blind adversarial review (artifacts in
+[`docs/plans/reviews/`](plans/reviews/)). Phase-by-phase status lives in the plan's Execution
+Status table; the design doc Parts A–E carry the rationale. Summary:
+- **PR #1** — the original gate + admin + bundled-asset app (later superseded by R2). **PR #2** —
+  admin CSRF fix (Referrer-Policy) + minimalist UI. **PR #3** — toolchain (actions v7/v6, wrangler
+  4.107).
+- **PR #4 (Phase A)** — recoverable codes: `code_enc` vault + Show-link.
+- **PR #5 (Phases B+C)** — R2 asset manager (upload/version/activate/download/delete) + public
+  assets + aliases + `/about` + README; **retired the git/CI bundling pipeline** (no more
+  `assets/`, `.generated/`, `build-manifest`; `scripts/lint-config.mjs` keeps the two structural
+  lints).
+- **PR #6 (Phase D)** — general file sharing (any type single-file, on-demand Unpack) + root→About
+  link.
+- **PR #7 (Phase E)** — admin-action audit log (`audit_log`, migration 0006) + Activity panel +
+  integrity-alert webhook + runbook fixes.
 
-## What shipped this session
+## Codebase orientation (fresh-agent map)
 
-1. **Phases 0–7 of the plan** via subagent-driven development (fresh subagent per task, two-stage review, ≥3-round adversarial gate per phase — all clean; findings caught+fixed: FK-safe test reset, assets-key lint evasion, login-throttle coverage). → PR #1.
-2. **Admin-auth follow-up (commits `75c1647`→`fa749d9`):** replaced password+TOTP with Cloudflare Access. New `src/lib/auth/cfaccess.ts` (jose remote-JWKS verify, RS256/iss/aud pinned, email allowlist, fail-closed). `src/routes/admin.ts` guard = production env-gate → Access verification, with `ACCESS_DEV_BYPASS=1` local-dev bypass (`.dev.vars` only, **linted out of committed config** via `hasDevBypass()` in the build). Removed password/TOTP/session code, `@noble/hashes`+`otpauth` deps, `ADMIN_PASSWORD_HASH`/`ADMIN_TOTP_SECRET`/`SESSION_SECRET` secrets, `hash-password`/`totp-setup` scripts, and (migration `0002`) the dead `totp_used_steps` table. Dedicated adversarial review = SHIP (one fail-closed hardening applied). Docs updated (spec §8/§15 Q6, plan Deviations, SETUP.md).
-3. **Deploy + config fix (commits `fa1cf84`→`182c1e2`):** owner ran the account hand-off; hit a `wrangler d1 create` mishap (its "add on your behalf?" prompt appended top-level bindings with wrong names instead of filling env blocks). Fixed `wrangler.jsonc` (real IDs in env blocks; `secrets.required` moved per-env since it isn't inherited); both `--dry-run`s warning-free; deployed; live-verified.
+- `src/index.ts` — app assembly: finalizing header middleware (applies the §9 header set + default
+  CSP + `app.onError`→generic page), root page (wordmark + `/about` link), route mounting. Alias
+  routes are mounted LAST (`publicAlias`) so fixed routes always win.
+- `src/routes/gate.ts` — `/a/:slug` (redeem → cookie → 302 to `/a/:slug/`) and `/a/:slug/*` (serves
+  the version's `entry` + subresources; cookie re-checked per request; public short-circuit).
+  `fileResponse()` sets content-type + CSP-for-HTML + inline/attachment. `reportIntegrity` on the
+  missing-object path.
+- `src/routes/admin.ts` — all `/admin*` routes behind env-gate → Access → `originOk` CSRF +
+  `panelReferrerPolicy` (same-origin, NOT no-referrer — that broke form POSTs). `renderPanel`/
+  `panelError` are the only renderers. `writeAudit` after each mutation.
+- `src/routes/adminView.ts` — panel HTML (Assets / Generate code / Codes / Activity sections).
+- `src/routes/publicAsset.ts` — `servePublicFile` + the `/:alias` routes.
+- `src/lib/`: `vault.ts` (AES-GCM code vault), `alert.ts` (`reportIntegrity`/`alertBody`),
+  `codes.ts` (`isValidSlug`, `hashCode`, `codeStatus`), `content/validate.ts` (`prepareUpload`,
+  `extractBundle`, content-type + inline sets), `content/store.ts` (R2 ops), `db/` (adminRepo,
+  assetRepo, auditRepo, rateStore, schema.test), `http/` (headers+CSP hashes, csrf), `ui/styles.ts`
+  (hashed inline CSS/JS — editing requires re-hashing, see below), `auth/cfaccess.ts`.
+- `migrations/` 0001–0006 (forward-only; never edit shipped ones). `src/test/seedAsset.ts` seeds
+  the fixture asset (D1 rows + R2 object) — file-wide `beforeEach` in gate/adminPanel/publicAsset
+  tests.
 
-## Remaining work (priority queue)
+## Ready to dispatch (no blockers — pick up any)
 
-1. **End-to-end mint→redeem test on production** (the one unverified Task 7.4 substep — and the single highest-value check). Needs the OWNER (only their Google account passes Access): open `https://share.scarson.io/admin` → Google login → mint a code for the `testasset0000000000000` fixture → open `/a/testasset0000000000000?code=<code>` → must render `fixture ok`; then revoke → reload → generic page. **This one test transitively proves the two riskiest untested live states:** the real Cloudflare Access **JWT path** (Google login actually reaching the panel = the Worker-side verification works live, not just in unit tests) and the **`ASSET_COOKIE_SECRET` key-ring format** (item 4 — if the link renders `fixture ok`, the `k1:` key ring parsed correctly; if it silently fails to `fixture ok`, suspect the cookie secret first). A fresh agent CANNOT do this alone (no admin access); prompt the owner.
-2. **CI activation before merging `main`:** add GitHub repo secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit + D1:Edit) + `CLOUDFLARE_ACCOUNT_ID`; **confirm Cloudflare Workers Builds is DISABLED** for the `artifact-share` Worker (dashboard → the Worker → Settings → Builds) — else two deployers race on `main`. See SETUP.md §5. (Owner/dashboard action.)
-3. **Merge PR #1** (`dev` → `main`) — owner's call. On merge, `deploy.yml` runs on `main` → migrations + `wrangler deploy --env production`. Until the repo secrets in (2) exist, that deploy job reds (expected; the current live version was deployed manually).
-4. **Verify `ASSET_COOKIE_SECRET` is `k1:<random>` format** (key-ring `kid:secret`). If the owner set the bare `openssl` output, share links fail. Re-set if unsure: `echo "k1:$(openssl rand -base64 32)" | npx wrangler secret put ASSET_COOKIE_SECRET --env production` (and `--env preview`). (Owner.)
-5. **Publish a real asset** (when wanted): `npm run new-asset -- "Title"` → edit `assets/<slug>/index.html` → `npm run build-manifest` → commit `assets/`+`.generated/` → PR `dev`→`main` → merge deploys → mint a code in `/admin`.
+1. **Owner-only live smoke test (highest-value, needs Google login):** open `share.scarson.io/admin`
+   → **upload a throwaway PRIVATE asset** (the only prod asset today is the *public* `/about`, which
+   serves with no code, so it can't exercise the redemption path) → mint a code for it → open the
+   `/a/…?code=…` link → confirm it renders → revoke → reload → generic page → delete the throwaway
+   asset. This exercises the real Access JWT path + cookie key-ring end to end. A fresh agent CANNOT
+   do this (no admin auth) — prompt the owner.
+2. **(Optional) Enable the integrity webhook:** `echo -n "https://hooks.slack.com/…" | npx wrangler
+   secret put ALERT_WEBHOOK_URL --env production`. Unset today = console channel only. Rationale +
+   Cloudflare-Notifications tradeoff in SETUP §8/§12.
+3. **(Optional) Normalize the `/about` row's `entry`:** it's `NULL` (reads as `index.html`). Fine as
+   is; re-upload via the panel if you want an explicit value.
 
-## Deferred / blocked items (with unblock conditions)
+## Deferred / parked (with unblock conditions)
 
-- **Task 7.4 full production verification** — plan Phase 7 Task 7.4. Unblock: owner completes item (1) above. Several substeps already done (preview isolation, admin→Access 302, `/robots.txt`, blank root, byte-stable failure page — all live-verified this session); only the mint→redeem→revoke round-trip remains (needs admin login).
-- **CI-driven deploys** — deploy.yml (`fe63660`). Unblock: item (2). Currently inert (no repo secrets); the live deploy was manual.
+- **Sandboxed-iframe asset rendering** — spec §15 Q2, still deferred (an owner decision, not a
+  gap). Unblock: owner decides the CSP-can't-stop-top-nav-exfiltration tradeoff is worth the iframe
+  complexity. Nothing about R2 changed the calculus.
+- **Per-event recipient access log** (individual redemption times/IPs) — out of scope; the codes
+  table keeps `use_count` + `last_used_at` only. The NEW `audit_log` covers ADMIN actions, not
+  recipient reads. Unblock: only if forensic recipient-side history is actually needed.
+- **Direct-to-R2 presigned uploads** — deferred (design §3 sub-option). Worker-proxied multipart is
+  fine at current sizes (20 MB upload cap). Unblock: assets outgrow the request-body limit.
 
-## Operational guardrails (learned this session — don't re-discover)
+## Operational guardrails (accumulated — don't re-discover)
 
-- **`wrangler d1 create`: DECLINE its "add it on your behalf?" prompt.** It appends a wrong-named TOP-LEVEL binding; paste the UUID into the matching **env block** `DB` binding instead. (SETUP.md §2.1 warns; `wrangler.jsonc` comment too.)
-- **`ASSET_COOKIE_SECRET` MUST be `k1:<random>`** (parsed as a key ring). Bare value breaks the recipient gate.
-- **`secrets.required` is per-env, not inherited** — it lives inside each `env` block in `wrangler.jsonc`, not top-level.
-- **`ACCESS_DEV_BYPASS` is local-only** (`.dev.vars`); the build FAILS if it appears anywhere in `wrangler.jsonc`. Local admin QA needs it set (there's no Access edge locally); `ENVIRONMENT=production` in `.dev.vars` is also needed for the app to serve locally.
-- **Never push `main` directly** — flow is `dev` → PR → `main`.
-- **Deploying production intentionally disables the `*-artifact-share.samuel-carson.workers.dev` version-preview URLs** (spec §10). Expected, not a regression.
-- **Toolchain reality:** `@cloudflare/vitest-pool-workers` 0.17 (vitest 4) — see Task 0.3 deviation. **KDF:** `hash-wasm` does NOT run on Workers (runtime `WebAssembly.compile` forbidden) — that's why argon2id→`@noble/hashes` originally, now moot (auth is Access). **Cloudflare account MCP is NOT authorized** in a non-interactive session; wrangler's OAuth token lacks Zero-Trust/Access scope — so Access config is dashboard-only or via a Zero-Trust-scoped API token.
-
-## Blank-page note (already resolved)
-
-The owner reported "blank pages" post-deploy. **Not a bug:** `/` returns a blank 200 by design (spec §9 — nothing to enumerate). All real surfaces verified live: `/robots.txt` → `Disallow: /`; `/a/<fixture>` → generic fail page; `/admin` → 302 to Cloudflare Access. To see content, use `/admin` (Google login) → mint → open the `/a/…?code=…` link.
+- **Never push `main` directly.** Flow: feature work on this `dev`-tracking branch → PR → `main`.
+  Merge only after multi-round blind adversarial review (owner grant, recorded in CLAUDE.md §Merge
+  authority + `docs/git-strategy.md`). `gh pr merge --merge` (never squash/rebase).
+- **Editing `src/lib/ui/styles.ts` (PUBLIC_STYLE / ADMIN_STYLE / ADMIN_SCRIPT) requires re-hashing**
+  the sha256 in `src/lib/http/headers.ts`. `src/lib/http/csp.test.ts` fails with the correct hash
+  printed — paste it, rerun. No `unsafe-inline`, ever.
+- **`Referrer-Policy` on admin pages is `same-origin`, NOT `no-referrer`** — no-referrer makes the
+  browser send `Origin: null` on same-origin form POSTs and the CSRF check 403s every submit. (See
+  the pitfalls doc + the user-memory entry.)
+- **Serve multi-file bundles at a trailing-slash URL** (`/a/<slug>/`) or relative subresources
+  resolve outside the bundle (RFC 3986). The gate 302s bare → trailing-slash post-authorization.
+- **Key-ring secrets are `kid:secret` (`k1:…`).** `CODE_VAULT_KEY` values must be standard-base64 of
+  32 bytes (`openssl rand -base64 32`) or `encryptCode` throws and every mint 500s.
+- **`ACCESS_DEV_BYPASS` is `.dev.vars`-only** (lint fails if it's in committed config); tests pin it
+  to `"0"` in `vitest.config.ts`. Local admin QA needs `ENVIRONMENT=production` + `ACCESS_DEV_BYPASS=1`
+  in `.dev.vars` (there's no Access edge locally).
+- **`wrangler d1 create` / `r2 bucket create` "add on your behalf?" prompt: DECLINE.** It appends a
+  wrong-named top-level binding; the bindings already live in the `env` blocks.
+- **`secrets.required` is per-env, not inherited.** `ALERT_WEBHOOK_URL` is intentionally NOT in it
+  (optional). **Keep Workers observability OFF/minimal + Logpush OFF** — request URLs contain the
+  code (SETUP §8).
+- **Tests run inside workerd** (`@cloudflare/vitest-pool-workers`, real D1/R2). Per-test D1 reset
+  from `src/test/apply-migrations.ts`; R2 persists per-file (so `seedFixtureAsset` re-puts
+  idempotently). Do NOT use `test.concurrent` in a file.
+- **Security invariants a fresh agent MUST NOT casually regress** (a naive "improvement" silently
+  breaks confidentiality; full list in the pitfalls doc + spec §9): every failure path returns
+  `failurePage()` — one byte-identical generic page, no per-case fingerprint; any new admin action
+  `writeAudit`s WITHOUT the raw code/URL and any new logging carries only safe fields (the code is a
+  bearer credential in the URL); the R2 bucket never gets a public URL; D1 is the single time source
+  (`unixepoch()` in SQL, never `Date.now()` for authz); the gate re-checks the code in D1 on EVERY
+  request (the cookie is never the authority).
+- **Branch seam:** this `dev`-tracking branch carries docs-only commits (the review artifacts + this
+  handoff rewrite) that are AHEAD of `origin/main`. That's normal for the two-branch flow — they ride
+  the next feature PR to `main`, or PR them standalone if you want main's docs current sooner. No
+  code divergence; `main` and `dev` are code-identical.
+- **Local dev:** `cp .dev.vars.example .dev.vars`, `npx wrangler d1 migrations apply
+  artifact-share-dev --local`, `npm run dev`. The Preview MCP launch config is `.claude/launch.json`.
 
 ## Continuation prompt (paste-ready)
 
 ```
-You're resuming the "Artifact Share" Cloudflare Worker (Hono + D1) in ~/Code/artifact-share, branch dev (tip 182c1e2, PR #1 open dev→main). Read docs/HANDOFF.md and the plan's Execution Status table first. The app is DEPLOYED & LIVE (share.scarson.io + artifact-share-preview.samuel-carson.workers.dev); admin auth is Cloudflare Access + Google. 94 tests green, tsc clean.
+You're resuming "Artifact Share" — a single-admin Cloudflare Worker (Hono + D1 + R2) for sharing
+confidential files behind per-recipient access codes, LIVE at share.scarson.io. Work in the
+worktree at .claude/worktrees/eager-almeida-95f4ee (branch tracks dev). Read docs/HANDOFF.md
+first, then the plan's Execution Status table and the two design docs it points at.
 
-Most of what remains needs the OWNER (admin actions behind Google/Access, dashboard, GitHub secrets), so surface those rather than attempting them. Priority queue (see HANDOFF "Remaining work"): (1) owner runs the end-to-end mint→redeem→revoke test on production /admin — the last Task 7.4 substep; (2) owner adds GitHub repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID and confirms Workers Builds is disabled before merging main; (3) merge PR #1; (4) verify ASSET_COOKIE_SECRET is k1:<random>. Respect the operational guardrails in HANDOFF (esp. wrangler d1-create prompt, the k1: prefix, never push main, ACCESS_DEV_BYPASS is local-only). Use subagent-driven development + a gate review for any further code changes.
+State: ALL phases (A–E) shipped and merged to main; production is deployed and green; 170 tests
+pass, tsc + lint-config clean; no open PRs; nothing blocked. Assets live in private R2 (NOT git);
+publishing is a runtime /admin upload. Admin is Cloudflare Access-gated.
+
+If asked to build: brainstorm/design first, then TDD, then a blind adversarial-review round before
+merging (owner granted agent merge authority CONDITIONAL on that review — see CLAUDE.md §Merge
+authority). Respect the operational guardrails in HANDOFF: never push main; re-hash CSP when editing
+ui/styles.ts; admin pages use Referrer-Policy same-origin; serve bundles at trailing slash; key-ring
+secret formats; ACCESS_DEV_BYPASS is local-only. The only owner-only action outstanding is an
+optional live mint→redeem→revoke smoke test through /admin (needs Google login) and optionally
+setting ALERT_WEBHOOK_URL. Verify claims with real commands (npm test, curl the live site) before
+reporting done.
 ```
 
-## ⚠ Deploy-token scopes needed (owner action) — updated 2026-07-03 ~09:20Z
+---
 
-Every `main` AND `dev` deploy job fails at `wrangler deploy` because the CI `CLOUDFLARE_API_TOKEN`
-repo secret is under-scoped. As Phases A–C landed, the Worker gained bindings the token can't
-touch. The token needs, in addition to its current Workers Scripts:Edit + D1:Edit:
-
-1. **Zone → Workers Routes → Edit** on the `scarson.io` zone — for the `share.scarson.io`
-   custom-domain route (production). Error: `Authentication error [code: 10000]` on
-   `/zones/<scarson.io>/workers/routes`.
-2. **Account → Workers R2 Storage → Edit** — deploy validates the `ASSETS` R2 binding against
-   the bucket. Error: `Authentication error [code: 10000]` on `/accounts/<id>/r2/buckets/…`.
-   (Both buckets already exist; this is a token-scope gap, not a missing bucket.)
-
-**Owner fix (~2 min):** dash → My Profile → API Tokens → edit the CI token → add both permissions
-above → save. Then `gh run rerun <latest-failed-run-id> --failed` (or the next push re-runs it).
-Until then, preview + production deploys red on the deploy step; the `test` job is green, so code
-correctness is validated. Production still serves the last MANUAL deploy (pre-Phase-A).
-
-**After the token is fixed and main deploys green:** publish `/about` — upload
-`docs/assets-src/about/index.html` via `share.scarson.io/admin` (title "How this site works"),
-toggle Public, set alias `about`. And re-set `ASSET_COOKIE_SECRET`/`CODE_VAULT_KEY` are already
-in place (Phase A). Run the end-to-end mint→redeem→revoke check.
+**History:** the prior 2026-07-03 handoff (pre-R2 asset manager, pre-CI-token-fix) is preserved in
+git — `git log -p docs/HANDOFF.md` shows the full evolution. It is fully superseded by the
+checkpoint above and merged PRs #4–#7; do not act on it.

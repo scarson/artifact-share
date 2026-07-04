@@ -165,3 +165,25 @@ This section is the discovery hook for plan writers who arrive here via the `wri
 - [ ] **Dispatch prompts include the mandatory-persistence block** — copy from `docs/git-strategy.md` §Output persistence; substitute `<PERSISTENCE_PATH>` with a durable per-subagent path (ORCH-1)
 - [ ] **Plan specifies exact persistence paths, not "write somewhere useful"** — ambiguous paths default to `/tmp` under pressure, which doesn't survive (ORCH-1)
 - [ ] **Orchestrator commits subagent artifacts wave-by-wave** — committed files land on the campaign branch before consolidation begins (ORCH-1)
+
+## Serve multi-file bundles at a trailing-slash URL (RFC 3986)
+
+A document served at `/a/<slug>` (no trailing slash) makes every RELATIVE subresource ref in an
+uploaded bundle (`<link href="app.css">`) resolve to `/a/app.css` — a sibling, OUTSIDE the bundle —
+and 404. Serve the document at `/a/<slug>/` instead, where `app.css` resolves to `/a/<slug>/app.css`
+(a child). The gate 302-redirects a bare `/a/<slug>` to `/a/<slug>/` **only after authorization**
+(so the redirect isn't a slug-validity oracle); the `/a/:slug/*` route serves the document (empty
+tail ⇒ the version `entry`) and subresources. Same for public aliases (`/<alias>` → `/<alias>/`).
+Tests that fetch subresource URLs *absolutely* pass while every real bundle renders unstyled —
+assert the 302 Location AND fetch a relative subresource to actually cover it. (Design 2026-07-03
+§Part B; also in user-scoped memory.)
+
+## Audit + alert must never carry a raw code or share URL (spec §3 D4, §8)
+
+The access code is a bearer credential that transits the URL (`/a/<slug>?code=…`). Any NEW admin
+action MUST `writeAudit` with only ids / slugs / summaries — never the raw code, the decrypted
+Show-link value, or a full share URL (`src/lib/db/auditRepo.ts`; the mint path passes only the
+label). Any NEW logging (`console.*`, a webhook, an integrity alert) MUST likewise carry only safe
+fields — see `src/lib/alert.ts` `alertBody` (event/slug/version/codeId, where codeId is the D1 row
+id, NOT the code). Keep Workers observability OFF/minimal and Logpush OFF: platform request logs
+capture the URL, hence the code (SETUP §8/§12).
